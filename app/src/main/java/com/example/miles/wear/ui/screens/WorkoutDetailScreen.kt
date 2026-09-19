@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,7 +28,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,10 +49,14 @@ import com.example.miles.wear.ui.theme.NeonCyan
 import com.example.miles.wear.ui.theme.OLEDBlack
 import com.example.miles.wear.ui.theme.VividGreen
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
-fun WorkoutSummaryScreen(
-    onDone: () -> Unit
+fun WorkoutDetailScreen(
+    sessionId: Long,
+    onBack: () -> Unit
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -61,97 +64,20 @@ fun WorkoutSummaryScreen(
 
     val repository = MilesWearApplication.instance.repository
     val settings by repository.settings.collectAsStateWithLifecycle()
-    val phoneMessaging = MilesWearApplication.instance.phoneMessagingManager
+    var session by remember { mutableStateOf<WorkoutSessionEntity?>(null) }
 
-    var latestSession by remember { mutableStateOf<WorkoutSessionEntity?>(null) }
-    var showDiscardConfirm by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
+    LaunchedEffect(sessionId) {
         focusRequester.requestFocus()
-        latestSession = repository.getLatestWorkout()
+        session = repository.getSessionById(sessionId)
     }
 
-    val session = latestSession
-    val durationMin = (session?.durationSeconds ?: 0L) / 60
-    val durationSec = (session?.durationSeconds ?: 0L) % 60
+    val cur = session
+    val durationMin = (cur?.durationSeconds ?: 0L) / 60
+    val durationSec = (cur?.durationSeconds ?: 0L) % 60
     val formattedTime = String.format("%02d:%02d", durationMin, durationSec)
-    val distanceFormatted = settings.unit.formatDistance(session?.distanceMeters ?: 0.0)
-    val paceFormatted = settings.unit.formatPace(session?.distanceMeters ?: 0.0, session?.durationSeconds ?: 0L)
-    val emoji = WorkoutType.fromString(session?.workoutType ?: "").emoji
-
-    if (showDiscardConfirm) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(OLEDBlack)
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Discard workout?",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "This workout will be deleted from history.",
-                    fontSize = 10.sp,
-                    color = MutedGray,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Chip(
-                    onClick = { showDiscardConfirm = false },
-                    colors = ChipDefaults.chipColors(
-                        backgroundColor = Color(0xFF222226),
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier.fillMaxWidth(0.85f),
-                    label = {
-                        Text(
-                            text = "CANCEL",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Chip(
-                    onClick = {
-                        coroutineScope.launch {
-                            session?.id?.let { repository.deleteWorkoutSession(it) }
-                            onDone()
-                        }
-                    },
-                    colors = ChipDefaults.chipColors(
-                        backgroundColor = Color(0xFF3B1010),
-                        contentColor = CoralFlame
-                    ),
-                    modifier = Modifier.fillMaxWidth(0.85f),
-                    label = {
-                        Text(
-                            text = "DISCARD",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CoralFlame,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                )
-            }
-        }
-        return
-    }
+    val distFormatted = settings.unit.formatDistance(cur?.distanceMeters ?: 0.0)
+    val paceFormatted = settings.unit.formatPace(cur?.distanceMeters ?: 0.0, cur?.durationSeconds ?: 0L)
+    val emoji = WorkoutType.fromString(cur?.workoutType ?: "").emoji
 
     Scaffold(
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) }
@@ -178,18 +104,20 @@ fun WorkoutSummaryScreen(
                     modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                 ) {
                     Text(
-                        text = "WORKOUT COMPLETE",
-                        fontSize = 12.sp,
+                        text = "$emoji ${cur?.workoutType?.uppercase() ?: "WORKOUT"}",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
-                        color = VividGreen,
+                        color = NeonCyan,
                         letterSpacing = 1.sp
                     )
-                    Text(
-                        text = "$emoji ${session?.workoutType ?: "Running"}",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
+                    cur?.startTime?.let { start ->
+                        val dateStr = SimpleDateFormat("MMM d, yyyy • HH:mm", Locale.getDefault()).format(Date(start))
+                        Text(
+                            text = dateStr,
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
                 }
             }
 
@@ -207,7 +135,7 @@ fun WorkoutSummaryScreen(
                         modifier = Modifier.weight(1f)
                     )
                     StatPill(
-                        value = "$distanceFormatted ${settings.unit.distanceLabel}",
+                        value = "$distFormatted ${settings.unit.distanceLabel}",
                         label = "DISTANCE",
                         color = VividGreen,
                         modifier = Modifier.weight(1f)
@@ -229,7 +157,7 @@ fun WorkoutSummaryScreen(
                         modifier = Modifier.weight(1f)
                     )
                     StatPill(
-                        value = if ((session?.avgBpm ?: 0) > 0) "♥ ${session?.avgBpm} BPM" else "♥ -- BPM",
+                        value = if ((cur?.avgBpm ?: 0) > 0) "${cur?.avgBpm} BPM" else "-- BPM",
                         label = "AVG HR",
                         color = CoralFlame,
                         modifier = Modifier.weight(1f)
@@ -245,13 +173,13 @@ fun WorkoutSummaryScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     StatPill(
-                        value = "${session?.totalSteps ?: 0}",
+                        value = "${cur?.totalSteps ?: 0}",
                         label = "STEPS",
                         color = ElectricAmber,
                         modifier = Modifier.weight(1f)
                     )
                     StatPill(
-                        value = "${session?.caloriesKcal ?: 0} kcal",
+                        value = "${cur?.caloriesKcal ?: 0} kcal",
                         label = "CALORIES",
                         color = CoralFlame,
                         modifier = Modifier.weight(1f)
@@ -259,7 +187,7 @@ fun WorkoutSummaryScreen(
                 }
             }
 
-            // Sync status feedback
+            // Sync Status
             item {
                 Spacer(modifier = Modifier.height(2.dp))
                 Column(
@@ -271,50 +199,26 @@ fun WorkoutSummaryScreen(
                         .padding(8.dp)
                 ) {
                     Text(
-                        text = if (session?.isSyncedToPhone == true) "Synced to MILES phone app" else "Saved locally (Offline-first)",
+                        text = if (cur?.isSyncedToPhone == true) "Synced to MILES Phone App" else "Stored Locally (Offline Queue)",
                         fontSize = 10.sp,
-                        color = if (session?.isSyncedToPhone == true) VividGreen else ElectricAmber,
+                        color = if (cur?.isSyncedToPhone == true) VividGreen else ElectricAmber,
                         fontWeight = FontWeight.Medium
                     )
                 }
             }
 
-            // Primary Save Action
+            // Delete session button
             item {
                 Spacer(modifier = Modifier.height(6.dp))
                 Chip(
                     onClick = {
                         coroutineScope.launch {
-                            phoneMessaging.flushOfflineQueue()
-                            onDone()
+                            repository.deleteWorkoutSession(sessionId)
+                            onBack()
                         }
                     },
                     colors = ChipDefaults.chipColors(
-                        backgroundColor = VividGreen,
-                        contentColor = Color.Black
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .padding(vertical = 2.dp),
-                    label = {
-                        Text(
-                            text = "Save Workout",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                )
-            }
-
-            // Secondary Discard Action
-            item {
-                Chip(
-                    onClick = { showDiscardConfirm = true },
-                    colors = ChipDefaults.chipColors(
-                        backgroundColor = Color(0xFF221414),
+                        backgroundColor = Color(0xFF2E1515),
                         contentColor = CoralFlame
                     ),
                     modifier = Modifier
@@ -322,12 +226,10 @@ fun WorkoutSummaryScreen(
                         .padding(vertical = 2.dp),
                     label = {
                         Text(
-                            text = "Discard",
-                            fontSize = 12.sp,
+                            text = "Delete Workout",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = CoralFlame,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center
+                            color = CoralFlame
                         )
                     }
                 )

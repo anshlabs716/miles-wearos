@@ -43,4 +43,7 @@ interface WorkoutSessionDao {
 
     @Query("SELECT * FROM workout_sessions WHERE id = :id")
     suspend fun getSessionById(id: Long): WorkoutSessionEntity?
+
+    @Query("DELETE FROM workout_sessions WHERE id = :id")
+    suspend fun deleteSession(id: Long)
 }

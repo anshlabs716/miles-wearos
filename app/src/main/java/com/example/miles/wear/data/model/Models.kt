@@ -1,20 +1,103 @@
 package com.example.miles.wear.data.model
 
-enum class WorkoutType(val displayName: String, val iconRes: String) {
-    RUN("Run", "ic_run"),
-    WALK("Walk", "ic_walk"),
-    RIDE("Ride", "ic_bike"),
-    HIKE("Hike", "ic_hike"),
-    INDOOR("Indoor", "ic_heart")
+enum class WorkoutType(
+    val displayName: String,
+    val emoji: String,
+    val iconRes: String
+) {
+    WALK("Walking", "🚶", "ic_walk"),
+    RUN("Running", "🏃", "ic_run"),
+    CYCLING("Cycling", "🚴", "ic_bike"),
+    HIKE("Hiking", "⛰️", "ic_hike"),
+    GENERAL("General", "⚡", "ic_heart"),
+    CUSTOM("Custom", "✨", "ic_custom");
+
+    companion object {
+        // Backwards compatibility aliases for tests and existing references
+        val RIDE = CYCLING
+        val OTHER = GENERAL
+        val INDOOR = GENERAL
+
+        fun fromString(name: String): WorkoutType {
+            return entries.firstOrNull { it.name.equals(name, ignoreCase = true) || it.displayName.equals(name, ignoreCase = true) }
+                ?: if (name.startsWith("CUSTOM", ignoreCase = true)) CUSTOM else RUN
+        }
+    }
 }
+
+data class GpsPoint(
+    val lat: Double,
+    val lon: Double,
+    val alt: Double = 0.0,
+    val speed: Double = 0.0,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 enum class WorkoutState {
     IDLE,
-    ACTIVE,
+    STARTING,
+    RUNNING,
     PAUSED,
-    FINISHED,
+    FINISHING,
+    COMPLETED,
+    DISCARDED,
     MIRRORED
 }
+
+enum class GpsStatus(val label: String) {
+    SEARCHING("GPS Searching…"),
+    READY("GPS Ready"),
+    UNAVAILABLE("GPS Unavailable"),
+    INDOOR("Indoor / Off")
+}
+
+enum class DistanceUnit(
+    val title: String,
+    val distanceLabel: String,
+    val paceLabel: String,
+    val speedLabel: String
+) {
+    METRIC("Metric", "km", "/km", "km/h"),
+    IMPERIAL("Imperial", "mi", "/mi", "mph");
+
+    fun formatDistance(meters: Double): String {
+        return if (this == METRIC) {
+            String.format("%.2f", meters / 1000.0)
+        } else {
+            String.format("%.2f", meters * 0.000621371)
+        }
+    }
+
+    fun formatPace(meters: Double, elapsedSeconds: Long): String {
+        if (meters < 15.0 || elapsedSeconds == 0L) return "--:--"
+        val paceSec = if (this == METRIC) {
+            (elapsedSeconds / (meters / 1000.0)).toLong()
+        } else {
+            (elapsedSeconds / (meters * 0.000621371)).toLong()
+        }
+        if (paceSec > 3599) return ">59m"
+        val m = paceSec / 60
+        val s = paceSec % 60
+        return String.format("%d:%02d", m, s)
+    }
+
+    fun formatSpeed(speedMps: Double): String {
+        val speed = if (this == METRIC) {
+            speedMps * 3.6
+        } else {
+            speedMps * 2.23694
+        }
+        return String.format("%.1f", speed)
+    }
+}
+
+data class WearSettings(
+    val unit: DistanceUnit = DistanceUnit.METRIC,
+    val keepScreenOn: Boolean = true,
+    val gpsEnabled: Boolean = true,
+    val hrEnabled: Boolean = true,
+    val stepTrackingEnabled: Boolean = true
+)
 
 enum class HeartRateZone(
     val title: String,
@@ -45,6 +128,7 @@ enum class HeartRateZone(
 data class LiveHeartRate(
     val bpm: Int = 0,
     val accuracy: Int = 0, // 0: No Contact, 1: Unreliable, 2: Low, 3: Medium, 4: High
+    val isAvailable: Boolean = true,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -52,12 +136,15 @@ data class LiveWorkoutMetrics(
     val elapsedSeconds: Long = 0L,
     val heartRate: Int = 0,
     val hrAccuracy: Int = 0,
-    val steps: Int = 0,
+    val isHrAvailable: Boolean = true,
+    val steps: Int = 0,             // workout steps
+    val dailySteps: Int = 0,        // daily total steps
     val cadenceSpm: Int = 0,
     val caloriesKcal: Int = 0,
     val distanceMeters: Double = 0.0,
     val elevationGainMeters: Double = 0.0,
-    val speedMps: Double = 0.0
+    val speedMps: Double = 0.0,
+    val gpsStatus: GpsStatus = GpsStatus.SEARCHING
 )
 
 data class PhoneMirroredMetrics(

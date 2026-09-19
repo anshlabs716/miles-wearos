@@ -34,7 +34,7 @@ class MilesWearApplication : Application() {
         instance = this
 
         database = MilesDatabase.getInstance(this)
-        repository = MilesRepository(database.queueDao(), database.workoutSessionDao())
+        repository = MilesRepository(this, database.queueDao(), database.workoutSessionDao())
         sensorTracker = SensorTracker(this)
         phoneMessagingManager = PhoneMessagingManager(this, repository).apply {
             initialize()

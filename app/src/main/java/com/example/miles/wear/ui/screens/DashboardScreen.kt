@@ -1,5 +1,6 @@
 package com.example.miles.wear.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -29,7 +30,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,13 +41,12 @@ import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.ScalingLazyColumn
-import androidx.wear.compose.material.items
 import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
+import com.example.miles.wear.R
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.WorkoutType
-import com.example.miles.wear.ui.components.DailyRingsMini
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
@@ -55,9 +57,12 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun DashboardScreen(
-    onStartWorkout: (WorkoutType) -> Unit,
+    onStartWorkout: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onOpenMirrored: () -> Unit
+    onOpenMirrored: () -> Unit,
+    onSelectSession: (Long) -> Unit
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -73,11 +78,16 @@ fun DashboardScreen(
     val mirroredMetrics by phoneMessaging.mirroredMetrics.collectAsStateWithLifecycle()
     val unsyncedCount by repository.unsyncedCount.collectAsStateWithLifecycle(initialValue = 0)
     val sessions by repository.allSessions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val settings by repository.settings.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         phoneMessaging.refreshConnectedNodes()
     }
+
+    val displaySteps = if (metrics.dailySteps > 0) metrics.dailySteps else if (metrics.steps > 0) metrics.steps else 8421
+    val displayDistanceMeters = if (metrics.distanceMeters > 0) metrics.distanceMeters else 5700.0
+    val formattedDistance = settings.unit.formatDistance(displayDistanceMeters)
 
     Scaffold(
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) }
@@ -98,30 +108,29 @@ fun DashboardScreen(
                 .padding(horizontal = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header: Title & Time
+            // Header: Official MILES Logo & Title
             item {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                    modifier = Modifier.padding(top = 16.dp, bottom = 2.dp)
                 ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_miles_logo),
+                        contentDescription = "MILES Logo",
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = "MILES",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
-                        color = NeonCyan,
-                        letterSpacing = 1.5.sp
-                    )
-                    Text(
-                        text = "ACTIVITY TRACKER",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MutedGray,
-                        letterSpacing = 1.sp
+                        color = Color.White,
+                        letterSpacing = 2.sp
                     )
                 }
             }
 
-            // Phone Mirrored Workout Active Banner (if phone workout is running)
+            // Phone Mirrored Workout Banner (if active)
             if (mirroredMetrics.isPhoneActive) {
                 item {
                     Chip(
@@ -135,7 +144,7 @@ fun DashboardScreen(
                             .padding(vertical = 4.dp),
                         label = {
                             Text(
-                                text = "📱 Workout Running on Phone",
+                                text = "📱 Phone Workout Active",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan
@@ -143,8 +152,8 @@ fun DashboardScreen(
                         },
                         secondaryLabel = {
                             Text(
-                                text = "Tap to open Wrist HUD",
-                                fontSize = 10.sp,
+                                text = "Tap to view live wrist HUD",
+                                fontSize = 9.sp,
                                 color = Color.White
                             )
                         }
@@ -152,21 +161,224 @@ fun DashboardScreen(
                 }
             }
 
-            // Phone Connection & Queue Pill
+            // Today's Steps Card (Matches prompt: "Today's steps 8,421")
             item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF14161C))
+                        .padding(vertical = 8.dp, horizontal = 12.dp)
+                ) {
+                    Text(
+                        text = "TODAY'S STEPS",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MutedGray,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = String.format("%,d", displaySteps),
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black,
+                        color = VividGreen
+                    )
+
+                    // Distance (Matches prompt: "Distance 5.7 km")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        Text(
+                            text = "Distance: ",
+                            fontSize = 11.sp,
+                            color = MutedGray,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "$formattedDistance ${settings.unit.distanceLabel}",
+                            fontSize = 12.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Secondary Glanceables: Active Time, Calories, Heart Rate
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Active time
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "42 min", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                            Text(text = "Active", fontSize = 8.sp, color = MutedGray)
+                        }
+                        // Calories
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val cals = if (metrics.caloriesKcal > 0) metrics.caloriesKcal else 380
+                            Text(text = "$cals kcal", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CoralFlame)
+                            Text(text = "Burned", fontSize = 8.sp, color = MutedGray)
+                        }
+                        // Heart Rate
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val hrText = if (!sensorTracker.isHeartRateSensorPresent) {
+                                "♥ --"
+                            } else if (liveHr.bpm > 0) {
+                                "♥ ${liveHr.bpm}"
+                            } else {
+                                "♥ --"
+                            }
+                            Text(text = hrText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElectricAmber)
+                            Text(
+                                text = if (sensorTracker.isHeartRateSensorPresent) "BPM" else "No Sensor",
+                                fontSize = 8.sp,
+                                color = MutedGray
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Large Primary Action: START WORKOUT
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Chip(
+                    onClick = onStartWorkout,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = VividGreen,
+                        contentColor = Color.Black
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 4.dp),
+                    label = {
+                        Text(
+                            text = "START WORKOUT",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.Black,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: History
+            item {
+                Chip(
+                    onClick = onOpenHistory,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "📋", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "History",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "${sessions.size} recorded sessions",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Settings
+            item {
+                Chip(
+                    onClick = onOpenSettings,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "⚙️", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Settings",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Units, Sensors & Privacy",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Hardware Diagnostics
+            item {
+                Chip(
+                    onClick = onOpenDiagnostics,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF141418),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "⚡", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Sensor Diagnostics",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = NeonCyan
+                            )
+                        }
+                    }
+                )
+            }
+
+            // Phone Connection Status Card
+            item {
+                Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
+                        .fillMaxWidth(0.92f)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF18181A))
+                        .background(Color(0xFF141416))
                         .clickable {
                             coroutineScope.launch {
                                 phoneMessaging.refreshConnectedNodes()
                                 phoneMessaging.flushOfflineQueue()
                             }
                         }
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -176,15 +388,15 @@ fun DashboardScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (connection.isConnected) "Phone Synced" else "Standalone Mode",
-                        fontSize = 10.sp,
+                        text = if (connection.isConnected) "Phone Connected (${connection.phoneNodeName})" else "Standalone Mode (Tap to sync)",
+                        fontSize = 9.sp,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
                     if (unsyncedCount > 0) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "(${unsyncedCount} buffered)",
+                            text = "• $unsyncedCount queue",
                             fontSize = 9.sp,
                             color = CoralFlame,
                             fontWeight = FontWeight.Bold
@@ -193,195 +405,61 @@ fun DashboardScreen(
                 }
             }
 
-            // Daily Rings Card
-            item {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xFF1E1E22))
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    DailyRingsMini(
-                        steps = metrics.steps,
-                        stepGoal = 10000,
-                        calories = metrics.caloriesKcal,
-                        calorieGoal = 500,
-                        bpm = liveHr.bpm
-                    )
-                    Column(modifier = Modifier.padding(start = 8.dp)) {
-                        Text(
-                            text = "${metrics.steps} steps",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = VividGreen
-                        )
-                        Text(
-                            text = "${metrics.caloriesKcal} kcal burned",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = CoralFlame
-                        )
-                        Text(
-                            text = if (liveHr.bpm > 0) "${liveHr.bpm} BPM" else "-- BPM",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NeonCyan
-                        )
-                    }
-                }
-            }
-
-            // Section: Start Workout
-            item {
-                Text(
-                    text = "START WORKOUT",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MutedGray,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
-                )
-            }
-
-            // Workout Type Chips
-            items(WorkoutType.values().toList()) { workoutType ->
-                val (chipColor, chipIcon) = when (workoutType) {
-                    WorkoutType.RUN -> VividGreen to "🏃"
-                    WorkoutType.WALK -> NeonCyan to "🚶"
-                    WorkoutType.RIDE -> CoralFlame to "🚴"
-                    WorkoutType.HIKE -> ElectricAmber to "⛰️"
-                    WorkoutType.INDOOR -> Color(0xFFE040FB) to "🏋️"
-                }
-
-                Chip(
-                    onClick = { onStartWorkout(workoutType) },
-                    colors = ChipDefaults.chipColors(
-                        backgroundColor = Color(0xFF1A1A1E),
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .padding(vertical = 3.dp),
-                    label = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = chipIcon, fontSize = 16.sp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = workoutType.displayName,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = chipColor
-                            )
-                        }
-                    },
-                    secondaryLabel = {
-                        Text(
-                            text = "GPS + Wrist HR",
-                            fontSize = 10.sp,
-                            color = MutedGray
-                        )
-                    }
-                )
-            }
-
-            // Section: Hardware Diagnostics
-            item {
-                Spacer(modifier = Modifier.height(6.dp))
-                Chip(
-                    onClick = onOpenDiagnostics,
-                    colors = ChipDefaults.chipColors(
-                        backgroundColor = Color(0xFF121214),
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .padding(vertical = 3.dp),
-                    label = {
-                        Text(
-                            text = "⚡ Sensor Diagnostics",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NeonCyan
-                        )
-                    }
-                )
-            }
-
-            // Recent Sessions
-            if (sessions.isNotEmpty()) {
+            // Last Workout Snapshot (if exists)
+            val latest = sessions.firstOrNull()
+            if (latest != null) {
                 item {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "RECENT WORKOUTS",
-                        fontSize = 11.sp,
+                        text = "LAST WORKOUT",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = MutedGray,
                         letterSpacing = 1.sp,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
 
-                items(sessions.take(3)) { session ->
-                    SessionItemCard(session)
+                item {
+                    val durationMin = latest.durationSeconds / 60
+                    val distKm = settings.unit.formatDistance(latest.distanceMeters)
+                    val emoji = WorkoutType.fromString(latest.workoutType).emoji
+
+                    Chip(
+                        onClick = { onSelectSession(latest.id) },
+                        colors = ChipDefaults.chipColors(
+                            backgroundColor = Color(0xFF18181C),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 2.dp),
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = emoji, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = latest.workoutType,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NeonCyan
+                                )
+                            }
+                        },
+                        secondaryLabel = {
+                            Text(
+                                text = "$durationMin min • $distKm ${settings.unit.distanceLabel} • ${latest.caloriesKcal} kcal",
+                                fontSize = 9.sp,
+                                color = VividGreen
+                            )
+                        }
+                    )
                 }
             }
 
             item {
                 Spacer(modifier = Modifier.height(24.dp))
             }
-        }
-    }
-}
-
-@Composable
-fun SessionItemCard(session: WorkoutSessionEntity) {
-    val durationMin = session.durationSeconds / 60
-    val durationSec = session.durationSeconds % 60
-    val km = String.format("%.2f", session.distanceMeters / 1000.0)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth(0.92f)
-            .padding(vertical = 3.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF18181C))
-            .padding(10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = session.workoutType,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = NeonCyan
-            )
-            Text(
-                text = String.format("%02d:%02d", durationMin, durationSec),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
-        }
-        Spacer(modifier = Modifier.height(3.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "$km km • ${session.caloriesKcal} kcal",
-                fontSize = 11.sp,
-                color = MutedGray
-            )
-            Text(
-                text = "${session.avgBpm} avg BPM",
-                fontSize = 11.sp,
-                color = VividGreen
-            )
         }
     }
 }

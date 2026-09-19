@@ -27,10 +27,10 @@ class HeartRateZoneTest {
     fun testWorkoutTypes() {
         val types = WorkoutType.values()
         assertEquals(5, types.size)
-        assertEquals("Run", WorkoutType.RUN.displayName)
-        assertEquals("Walk", WorkoutType.WALK.displayName)
-        assertEquals("Ride", WorkoutType.RIDE.displayName)
-        assertEquals("Hike", WorkoutType.HIKE.displayName)
-        assertEquals("Indoor", WorkoutType.INDOOR.displayName)
+        assertEquals("Running", WorkoutType.RUN.displayName)
+        assertEquals("Walking", WorkoutType.WALK.displayName)
+        assertEquals("Cycling", WorkoutType.CYCLING.displayName)
+        assertEquals("Hiking", WorkoutType.HIKE.displayName)
+        assertEquals("Other", WorkoutType.OTHER.displayName)
     }
 }

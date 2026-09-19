@@ -28,5 +28,6 @@ data class WorkoutSessionEntity(
     val caloriesKcal: Int = 0,
     val distanceMeters: Double = 0.0,
     val elevationGainMeters: Double = 0.0,
-    val isSyncedToPhone: Boolean = false
+    val isSyncedToPhone: Boolean = false,
+    val routeGeoJson: String = ""
 )

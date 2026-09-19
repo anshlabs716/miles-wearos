@@ -3,11 +3,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Deep Navy Background Card -->
+    <path
+        android:fillColor="#151A60"
+        android:pathData="M24,12 L84,12 A16,16 0 0 1 100,28 L100,80 A16,16 0 0 1 84,96 L24,96 A16,16 0 0 1 8,80 L8,28 A16,16 0 0 1 24,12 Z" />
+
     <!-- Route Line connecting the Waypoints into the iconic MILES "M" -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="6.5"
+        android:strokeWidth="6"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:pathData="M27,69 L39,32 C41,27 46,27 48,32 L54,52 C55,56 59,56 60,52 L66,32 C68,27 73,27 75,32 L81,69" />
@@ -15,10 +20,10 @@
     <!-- Start Waypoint Node -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M27,69 m -6,0 a 6,6 0 1,0 12,0 a 6,6 0 1,0 -12,0" />
+        android:pathData="M27,69 m -5.5,0 a 5.5,5.5 0 1,0 11,0 a 5.5,5.5 0 1,0 -11,0" />
 
     <!-- End Waypoint Node -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M81,69 m -6,0 a 6,6 0 1,0 12,0 a 6,6 0 1,0 -12,0" />
+        android:pathData="M81,69 m -5.5,0 a 5.5,5.5 0 1,0 11,0 a 5.5,5.5 0 1,0 -11,0" />
 </vector>

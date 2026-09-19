@@ -15,12 +15,16 @@ import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Bundle
 import android.util.Log
+import com.example.miles.wear.data.model.GpsPoint
+import com.example.miles.wear.data.model.GpsStatus
 import com.example.miles.wear.data.model.HeartRateZone
 import com.example.miles.wear.data.model.LiveHeartRate
 import com.example.miles.wear.data.model.LiveWorkoutMetrics
+import com.example.miles.wear.util.HapticHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class SensorTracker(private val context: Context) : SensorEventListener, LocationListener {
@@ -28,18 +32,29 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-    // Sensors
-    private val heartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
-    private val stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-    private val stepDetectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
-    private val pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+    // Hardware Sensors
+    private val heartRateSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+    private val stepCounterSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+    private val stepDetectorSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+    private val pressureSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+
+    val isHeartRateSensorPresent: Boolean = heartRateSensor != null
+    val isStepSensorPresent: Boolean = stepCounterSensor != null || stepDetectorSensor != null
+    val isPressureSensorPresent: Boolean = pressureSensor != null
 
     // Reactive State
-    private val _liveHeartRate = MutableStateFlow(LiveHeartRate())
+    private val _liveHeartRate = MutableStateFlow(
+        LiveHeartRate(isAvailable = isHeartRateSensorPresent)
+    )
     val liveHeartRate: StateFlow<LiveHeartRate> = _liveHeartRate.asStateFlow()
 
-    private val _liveMetrics = MutableStateFlow(LiveWorkoutMetrics())
+    private val _liveMetrics = MutableStateFlow(
+        LiveWorkoutMetrics(isHrAvailable = isHeartRateSensorPresent)
+    )
     val liveMetrics: StateFlow<LiveWorkoutMetrics> = _liveMetrics.asStateFlow()
+
+    private val _gpsStatus = MutableStateFlow(GpsStatus.SEARCHING)
+    val gpsStatus: StateFlow<GpsStatus> = _gpsStatus.asStateFlow()
 
     private val _isLowPowerMode = MutableStateFlow(false)
     val isLowPowerMode: StateFlow<Boolean> = _isLowPowerMode.asStateFlow()
@@ -47,11 +62,29 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     private val _batteryPercent = MutableStateFlow(100)
     val batteryPercent: StateFlow<Int> = _batteryPercent.asStateFlow()
 
-    // Internal workout telemetry accumulation
+    // GPS Track Recording
+    private val _recordedRoute = MutableStateFlow<List<GpsPoint>>(emptyList())
+    val recordedRoute: StateFlow<List<GpsPoint>> = _recordedRoute.asStateFlow()
+
+    // Heart rate tracking statistics
+    private val _hrHistory = MutableStateFlow<List<Int>>(emptyList())
+    val hrHistory: StateFlow<List<Int>> = _hrHistory.asStateFlow()
+    var minBpm: Int = 0
+        private set
+    var maxBpm: Int = 0
+        private set
+    var avgBpm: Int = 0
+        private set
+
+    // Split cues
+    private var lastSplitUnitIndex = 0
+
+    // Internal workout tracking accumulation
     private var isTracking = false
     private var startTimestamp = 0L
     private var initialStepCount = -1
     private var workoutSteps = 0
+    private var currentDailySteps = 0
     private var initialAltitude = 0.0
     private var currentAltitude = 0.0
     private var maxAltitude = 0.0
@@ -59,6 +92,7 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     private var totalCaloriesBurned = 0.0
     private var lastLocation: Location? = null
     private var totalDistanceMeters = 0.0
+    private var isGpsFixAcquired = false
 
     // Cadence window (last 60s step timestamps)
     private val stepTimestamps = ConcurrentLinkedQueue<Long>()
@@ -91,9 +125,13 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
         } catch (e: Exception) {
             Log.e("SensorTracker", "Failed to register battery receiver", e)
         }
+        // Read initial daily steps if step counter is available
+        stepCounterSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
     }
 
-    fun startTracking() {
+    fun startTracking(isIndoor: Boolean = false) {
         isTracking = true
         startTimestamp = System.currentTimeMillis()
         initialStepCount = -1
@@ -103,16 +141,39 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
         lastLocation = null
         initialAltitude = 0.0
         currentAltitude = 0.0
+        isGpsFixAcquired = false
         stepTimestamps.clear()
+        _recordedRoute.value = emptyList()
+        _hrHistory.value = emptyList()
+        minBpm = 0
+        maxBpm = 0
+        avgBpm = 0
+        lastSplitUnitIndex = 0
+
+        if (isIndoor) {
+            _gpsStatus.value = GpsStatus.INDOOR
+        } else {
+            _gpsStatus.value = if (isGpsProviderEnabled()) GpsStatus.SEARCHING else GpsStatus.UNAVAILABLE
+        }
 
         registerSensors()
-        requestLocationUpdates()
+        if (!isIndoor) {
+            requestLocationUpdates()
+        }
     }
 
     fun stopTracking() {
         isTracking = false
         unregisterSensors()
         removeLocationUpdates()
+    }
+
+    private fun isGpsProviderEnabled(): Boolean {
+        return try {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun registerSensors() {
@@ -138,6 +199,10 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
 
     private fun unregisterSensors() {
         sensorManager.unregisterListener(this)
+        // Keep listening to daily step counter at low frequency
+        stepCounterSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
     }
 
     private fun reconfigureSensorsForPowerMode(lowPower: Boolean) {
@@ -159,11 +224,15 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
                     minDistance,
                     this
                 )
+            } else {
+                _gpsStatus.value = GpsStatus.UNAVAILABLE
             }
         } catch (e: SecurityException) {
-            Log.w("SensorTracker", "Location permission not granted yet for GPS", e)
+            Log.w("SensorTracker", "Location permission not granted for GPS", e)
+            _gpsStatus.value = GpsStatus.UNAVAILABLE
         } catch (e: Exception) {
             Log.e("SensorTracker", "Error starting GPS", e)
+            _gpsStatus.value = GpsStatus.UNAVAILABLE
         }
     }
 
@@ -185,32 +254,50 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
                     val reading = LiveHeartRate(
                         bpm = rawBpm,
                         accuracy = event.accuracy,
+                        isAvailable = true,
                         timestamp = System.currentTimeMillis()
                     )
                     _liveHeartRate.value = reading
+                    if (isTracking) {
+                        val currentList = _hrHistory.value.toMutableList()
+                        currentList.add(rawBpm)
+                        _hrHistory.value = currentList
+                        if (minBpm == 0 || rawBpm < minBpm) minBpm = rawBpm
+                        if (rawBpm > maxBpm) maxBpm = rawBpm
+                        avgBpm = currentList.average().toInt()
+                    }
                     updateWorkoutMetrics()
                 }
             }
             Sensor.TYPE_STEP_COUNTER -> {
                 val totalDeviceSteps = event.values.getOrNull(0)?.toInt() ?: 0
-                if (initialStepCount < 0) {
-                    initialStepCount = totalDeviceSteps
-                }
-                // Handle midnight counter reset or delta
-                val delta = if (totalDeviceSteps >= initialStepCount) {
-                    totalDeviceSteps - initialStepCount
+                currentDailySteps = totalDeviceSteps
+
+                if (isTracking) {
+                    if (initialStepCount < 0) {
+                        initialStepCount = totalDeviceSteps
+                    }
+                    val delta = if (totalDeviceSteps >= initialStepCount) {
+                        totalDeviceSteps - initialStepCount
+                    } else {
+                        totalDeviceSteps // Midnight counter rollover
+                    }
+                    workoutSteps = delta
+                    recordStepTimestamp()
+                    updateWorkoutMetrics()
                 } else {
-                    totalDeviceSteps // Midnight reset happened
+                    // Update daily steps in idle metrics
+                    _liveMetrics.value = _liveMetrics.value.copy(dailySteps = currentDailySteps)
                 }
-                workoutSteps = delta
-                recordStepTimestamp()
-                updateWorkoutMetrics()
             }
             Sensor.TYPE_STEP_DETECTOR -> {
-                recordStepTimestamp()
-                if (stepCounterSensor == null) {
-                    workoutSteps += 1
-                    updateWorkoutMetrics()
+                if (isTracking) {
+                    recordStepTimestamp()
+                    if (stepCounterSensor == null) {
+                        workoutSteps += 1
+                        currentDailySteps += 1
+                        updateWorkoutMetrics()
+                    }
                 }
             }
             Sensor.TYPE_PRESSURE -> {
@@ -248,7 +335,6 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     }
 
     fun tickTimer(elapsedSeconds: Long) {
-        // Accumulate active calorie calculation every second based on heart rate zone
         val currentBpm = _liveHeartRate.value.bpm
         val calBurnRatePerSec = when (HeartRateZone.fromBpm(currentBpm)) {
             HeartRateZone.RESTING -> 0.02   // ~1.2 kcal/min
@@ -265,7 +351,7 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     private fun updateWorkoutMetrics(elapsedSeconds: Long = _liveMetrics.value.elapsedSeconds) {
         val now = System.currentTimeMillis()
         pruneStepWindow(now)
-        val cadence = stepTimestamps.size // Steps in the last 60 seconds = SPM
+        val cadence = stepTimestamps.size
 
         val elevGain = if (initialAltitude != 0.0 && currentAltitude > initialAltitude) {
             currentAltitude - initialAltitude
@@ -275,25 +361,95 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
             elapsedSeconds = elapsedSeconds,
             heartRate = _liveHeartRate.value.bpm,
             hrAccuracy = _liveHeartRate.value.accuracy,
+            isHrAvailable = isHeartRateSensorPresent,
             steps = workoutSteps,
+            dailySteps = currentDailySteps,
             cadenceSpm = cadence,
             caloriesKcal = totalCaloriesBurned.toInt(),
             distanceMeters = totalDistanceMeters,
             elevationGainMeters = elevGain,
-            speedMps = lastLocation?.speed?.toDouble() ?: 0.0
+            speedMps = lastLocation?.speed?.toDouble() ?: 0.0,
+            gpsStatus = _gpsStatus.value
         )
     }
 
     override fun onLocationChanged(location: Location) {
         if (!isTracking) return
+        if (!isGpsFixAcquired) {
+            isGpsFixAcquired = true
+            _gpsStatus.value = GpsStatus.READY
+        }
+
         lastLocation?.let { prev ->
             val dist = prev.distanceTo(location)
-            if (dist > 1.0) { // filter GPS jitter
+            if (dist > 1.5) { // filter GPS jitter
                 totalDistanceMeters += dist
+
+                // Check distance split alert
+                val currentKm = (totalDistanceMeters / 1000.0).toInt()
+                if (currentKm > lastSplitUnitIndex && currentKm > 0) {
+                    lastSplitUnitIndex = currentKm
+                    HapticHelper.vibrateSplitCue(context)
+                }
             }
         }
         lastLocation = location
+
+        // Record point for route map and replay
+        val point = GpsPoint(
+            lat = location.latitude,
+            lon = location.longitude,
+            alt = location.altitude,
+            speed = location.speed.toDouble(),
+            timestamp = location.time
+        )
+        val currentRoute = _recordedRoute.value.toMutableList()
+        if (currentRoute.isEmpty() || currentRoute.last().let {
+            val loc1 = Location("").apply { latitude = it.lat; longitude = it.lon }
+            loc1.distanceTo(location) >= 2.5
+        }) {
+            currentRoute.add(point)
+            _recordedRoute.value = currentRoute
+        }
+
         updateWorkoutMetrics()
+    }
+
+    fun getRouteJson(): String {
+        val points = _recordedRoute.value
+        if (points.isEmpty()) return ""
+        val sb = StringBuilder("[")
+        points.forEachIndexed { index, p ->
+            sb.append("{\"lat\":${p.lat},\"lon\":${p.lon},\"alt\":${p.alt},\"speed\":${p.speed},\"time\":${p.timestamp}}")
+            if (index < points.size - 1) sb.append(",")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+
+    companion object {
+        fun parseRouteJson(json: String?): List<GpsPoint> {
+            if (json.isNullOrBlank() || json == "[]") return emptyList()
+            val result = mutableListOf<GpsPoint>()
+            try {
+                val array = JSONArray(json)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    result.add(
+                        GpsPoint(
+                            lat = obj.optDouble("lat", 0.0),
+                            lon = obj.optDouble("lon", 0.0),
+                            alt = obj.optDouble("alt", 0.0),
+                            speed = obj.optDouble("speed", 0.0),
+                            timestamp = obj.optLong("time", 0L)
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("SensorTracker", "Failed to parse route JSON", e)
+            }
+            return result
+        }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
@@ -304,6 +460,16 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
 
     @Deprecated("Deprecated in Java")
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-    override fun onProviderEnabled(provider: String) {}
-    override fun onProviderDisabled(provider: String) {}
+
+    override fun onProviderEnabled(provider: String) {
+        if (provider == LocationManager.GPS_PROVIDER && isTracking) {
+            _gpsStatus.value = GpsStatus.SEARCHING
+        }
+    }
+
+    override fun onProviderDisabled(provider: String) {
+        if (provider == LocationManager.GPS_PROVIDER && isTracking) {
+            _gpsStatus.value = GpsStatus.UNAVAILABLE
+        }
+    }
 }

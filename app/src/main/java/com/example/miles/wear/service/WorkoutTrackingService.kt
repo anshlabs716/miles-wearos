@@ -22,6 +22,7 @@ import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.HeartRateZone
 import com.example.miles.wear.data.model.WorkoutState
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.util.HapticHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -84,12 +85,12 @@ class WorkoutTrackingService : Service() {
         when (action) {
             ACTION_START -> {
                 val typeName = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: WorkoutType.RUN.name
-                val type = WorkoutType.values().firstOrNull { it.name == typeName } ?: WorkoutType.RUN
+                val type = WorkoutType.fromString(typeName)
                 startWorkout(type, isMirrored = false)
             }
             ACTION_START_MIRRORED -> {
                 val typeName = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: WorkoutType.RUN.name
-                val type = WorkoutType.values().firstOrNull { it.name == typeName } ?: WorkoutType.RUN
+                val type = WorkoutType.fromString(typeName)
                 startWorkout(type, isMirrored = true)
             }
             ACTION_PAUSE -> pauseWorkout()
@@ -102,7 +103,7 @@ class WorkoutTrackingService : Service() {
 
     fun startWorkout(type: WorkoutType, isMirrored: Boolean = false) {
         _currentWorkoutType.value = type
-        _workoutState.value = if (isMirrored) WorkoutState.MIRRORED else WorkoutState.ACTIVE
+        _workoutState.value = if (isMirrored) WorkoutState.MIRRORED else WorkoutState.RUNNING
         sessionStartTime = System.currentTimeMillis()
         elapsedSeconds = 0L
         lastVibratedKilometer = 0
@@ -110,7 +111,8 @@ class WorkoutTrackingService : Service() {
         // Haptic feedback for workout start
         vibratePattern(longArrayOf(0, 150, 100, 200))
 
-        sensorTracker.startTracking()
+        val isIndoor = (type == WorkoutType.OTHER)
+        sensorTracker.startTracking(isIndoor = isIndoor)
 
         val notification = buildOngoingNotification("00:00", 0)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -134,7 +136,7 @@ class WorkoutTrackingService : Service() {
     }
 
     fun pauseWorkout() {
-        if (_workoutState.value == WorkoutState.ACTIVE || _workoutState.value == WorkoutState.MIRRORED) {
+        if (_workoutState.value == WorkoutState.RUNNING || _workoutState.value == WorkoutState.MIRRORED) {
             _workoutState.value = WorkoutState.PAUSED
             vibratePattern(longArrayOf(0, 300))
             tickerJob?.cancel()
@@ -143,14 +145,14 @@ class WorkoutTrackingService : Service() {
 
     fun resumeWorkout() {
         if (_workoutState.value == WorkoutState.PAUSED) {
-            _workoutState.value = WorkoutState.ACTIVE
+            _workoutState.value = WorkoutState.RUNNING
             vibratePattern(longArrayOf(0, 150, 100, 150))
             startTicker()
         }
     }
 
     fun finishWorkout() {
-        _workoutState.value = WorkoutState.FINISHED
+        _workoutState.value = WorkoutState.COMPLETED
         tickerJob?.cancel()
         sensorTracker.stopTracking()
 
@@ -183,9 +185,16 @@ class WorkoutTrackingService : Service() {
     }
 
     fun discardWorkout() {
-        _workoutState.value = WorkoutState.IDLE
+        _workoutState.value = WorkoutState.DISCARDED
         tickerJob?.cancel()
         sensorTracker.stopTracking()
+
+        scope.launch {
+            if (currentSessionId > 0) {
+                repository.deleteWorkoutSession(currentSessionId)
+            }
+        }
+
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -213,17 +222,15 @@ class WorkoutTrackingService : Service() {
                 val currentKm = (metrics.distanceMeters / 1000.0).toInt()
                 if (currentKm > lastVibratedKilometer && currentKm > 0) {
                     lastVibratedKilometer = currentKm
-                    // 3 rhythmic pulses for split cue
                     vibratePattern(longArrayOf(0, 200, 150, 200, 150, 300))
                 }
 
-                // Check HR zone alerts (e.g. entering Max zone)
+                // Check HR zone alerts
                 if (hr.bpm >= HeartRateZone.MAX.minBpm) {
-                    // subtle double alert
                     vibratePattern(longArrayOf(0, 100, 80, 100))
                 }
 
-                // Update notification text
+                // Update notification
                 val timeStr = formatDuration(elapsedSeconds)
                 val notification = buildOngoingNotification(timeStr, hr.bpm)
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
@@ -247,9 +254,12 @@ class WorkoutTrackingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val metrics = sensorTracker.liveMetrics.value
+        val distanceStr = String.format("%.2f km", metrics.distanceMeters / 1000.0)
+
         val builder = NotificationCompat.Builder(this, MilesWearApplication.NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("${_currentWorkoutType.value.displayName} • $timeStr")
-            .setContentText(if (bpm > 0) "$bpm BPM • ${sensorTracker.liveMetrics.value.caloriesKcal} kcal" else "Active tracking...")
+            .setContentTitle("MILES • ${_currentWorkoutType.value.displayName}")
+            .setContentText("$timeStr • $distanceStr" + if (bpm > 0) " • $bpm BPM" else "")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -261,7 +271,7 @@ class WorkoutTrackingService : Service() {
             .setTouchIntent(pendingIntent)
             .setStatus(
                 Status.Builder()
-                    .addTemplate("${_currentWorkoutType.value.displayName} $timeStr")
+                    .addTemplate("${_currentWorkoutType.value.displayName} $timeStr • $distanceStr")
                     .build()
             )
             .build()
@@ -290,7 +300,7 @@ class WorkoutTrackingService : Service() {
                 }
             }
         } catch (e: Exception) {
-            // gracefully fallback if vibration permission or hardware unavailable
+            // safely ignored
         }
     }
 
