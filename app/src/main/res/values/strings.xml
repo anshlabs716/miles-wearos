@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MILES Wear OS</string>
+    <string name="app_description">Privacy-focused Wear OS activity tracker companion for MILES</string>
+
+    <!-- Navigation & Titles -->
+    <string name="title_dashboard">MILES Tracker</string>
+    <string name="title_workout_active">Active Workout</string>
+    <string name="title_workout_mirrored">Phone Mirrored</string>
+    <string name="title_summary">Workout Recap</string>
+    <string name="title_diagnostics">Sensor Diagnostics</string>
+
+    <!-- Workout Actions -->
+    <string name="action_start">Start</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_finish">Finish</string>
+    <string name="action_discard">Discard</string>
+    <string name="action_water_lock">Water Lock</string>
+    <string name="action_water_unlock">Hold to Unlock</string>
+    <string name="action_flush_queue">Sync Queue</string>
+
+    <!-- Workout Types -->
+    <string name="workout_run">Run</string>
+    <string name="workout_walk">Walk</string>
+    <string name="workout_ride">Ride</string>
+    <string name="workout_hike">Hike</string>
+    <string name="workout_indoor">Indoor</string>
+
+    <!-- Metrics -->
+    <string name="label_bpm">BPM</string>
+    <string name="label_spm">SPM</string>
+    <string name="label_steps">Steps</string>
+    <string name="label_cal">kcal</string>
+    <string name="label_km">km</string>
+    <string name="label_elev">m Elev</string>
+    <string name="label_pace">Pace</string>
+    <string name="label_accuracy">Accuracy</string>
+
+    <!-- Status & Connectivity -->
+    <string name="status_phone_connected">Phone Synced</string>
+    <string name="status_phone_disconnected">Standalone (Offline Queue)</string>
+    <string name="status_streaming_hr">Streaming HR to Phone</string>
+    <string name="status_power_save">Eco Sensor Mode (&lt;20%)</string>
+
+    <!-- Permissions -->
+    <string name="permission_sensors_title">Sensors Required</string>
+    <string name="permission_sensors_desc">MILES requires Body Sensors, Activity Recognition, and Location for zero-fake telemetry.</string>
+    <string name="permission_grant">Grant Permissions</string>
+
+    <!-- Tiles & Complications -->
+    <string name="tile_quick_start_label">Quick Start Workout</string>
+    <string name="tile_quick_start_desc">Instantly launch Run, Walk, or Ride</string>
+    <string name="tile_daily_rings_label">Daily Rings</string>
+    <string name="tile_daily_rings_desc">Steps, active calories, and heart rate</string>
+    <string name="complication_steps_desc">Daily steps</string>
+    <string name="complication_hr_desc">Heart rate</string>
+    <string name="complication_cal_desc">Active calories</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_name">Workout Tracking</string>
+    <string name="notification_channel_desc">Shows ongoing workout metrics</string>
+    <string name="notification_title_active">MILES Workout in Progress</string>
+</resources>

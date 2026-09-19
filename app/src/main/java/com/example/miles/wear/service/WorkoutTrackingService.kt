@@ -1,0 +1,302 @@
+package com.example.miles.wear.service
+
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Binder
+import android.os.Build
+import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.core.app.NotificationCompat
+import androidx.wear.ongoing.OngoingActivity
+import androidx.wear.ongoing.Status
+import com.example.miles.wear.MainActivity
+import com.example.miles.wear.MilesWearApplication
+import com.example.miles.wear.R
+import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
+import com.example.miles.wear.data.model.HeartRateZone
+import com.example.miles.wear.data.model.WorkoutState
+import com.example.miles.wear.data.model.WorkoutType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+class WorkoutTrackingService : Service() {
+
+    private val binder = LocalBinder()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var tickerJob: Job? = null
+
+    private val repository get() = MilesWearApplication.instance.repository
+    private val sensorTracker get() = MilesWearApplication.instance.sensorTracker
+    private val phoneMessaging get() = MilesWearApplication.instance.phoneMessagingManager
+
+    private val _workoutState = MutableStateFlow(WorkoutState.IDLE)
+    val workoutState: StateFlow<WorkoutState> = _workoutState.asStateFlow()
+
+    private val _currentWorkoutType = MutableStateFlow(WorkoutType.RUN)
+    val currentWorkoutType: StateFlow<WorkoutType> = _currentWorkoutType.asStateFlow()
+
+    private var sessionStartTime = 0L
+    private var elapsedSeconds = 0L
+    private var lastVibratedKilometer = 0
+    private var currentSessionId: Long = 0
+
+    inner class LocalBinder : Binder() {
+        fun getService(): WorkoutTrackingService = this@WorkoutTrackingService
+    }
+
+    override fun onBind(intent: Intent?): IBinder = binder
+
+    companion object {
+        const val ACTION_START = "ACTION_START"
+        const val ACTION_PAUSE = "ACTION_PAUSE"
+        const val ACTION_RESUME = "ACTION_RESUME"
+        const val ACTION_FINISH = "ACTION_FINISH"
+        const val ACTION_DISCARD = "ACTION_DISCARD"
+        const val ACTION_START_MIRRORED = "ACTION_START_MIRRORED"
+
+        const val EXTRA_WORKOUT_TYPE = "EXTRA_WORKOUT_TYPE"
+        private const val NOTIFICATION_ID = 1001
+
+        fun startWorkoutIntent(context: Context, type: WorkoutType): Intent {
+            return Intent(context, WorkoutTrackingService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_WORKOUT_TYPE, type.name)
+            }
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        when (action) {
+            ACTION_START -> {
+                val typeName = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: WorkoutType.RUN.name
+                val type = WorkoutType.values().firstOrNull { it.name == typeName } ?: WorkoutType.RUN
+                startWorkout(type, isMirrored = false)
+            }
+            ACTION_START_MIRRORED -> {
+                val typeName = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: WorkoutType.RUN.name
+                val type = WorkoutType.values().firstOrNull { it.name == typeName } ?: WorkoutType.RUN
+                startWorkout(type, isMirrored = true)
+            }
+            ACTION_PAUSE -> pauseWorkout()
+            ACTION_RESUME -> resumeWorkout()
+            ACTION_FINISH -> finishWorkout()
+            ACTION_DISCARD -> discardWorkout()
+        }
+        return START_STICKY
+    }
+
+    fun startWorkout(type: WorkoutType, isMirrored: Boolean = false) {
+        _currentWorkoutType.value = type
+        _workoutState.value = if (isMirrored) WorkoutState.MIRRORED else WorkoutState.ACTIVE
+        sessionStartTime = System.currentTimeMillis()
+        elapsedSeconds = 0L
+        lastVibratedKilometer = 0
+
+        // Haptic feedback for workout start
+        vibratePattern(longArrayOf(0, 150, 100, 200))
+
+        sensorTracker.startTracking()
+
+        val notification = buildOngoingNotification("00:00", 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val typeFlags = ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            startForeground(NOTIFICATION_ID, notification, typeFlags)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        // Save session placeholder in Room
+        scope.launch {
+            val entity = WorkoutSessionEntity(
+                workoutType = type.displayName,
+                startTime = sessionStartTime
+            )
+            currentSessionId = repository.saveWorkoutSession(entity)
+        }
+
+        startTicker()
+    }
+
+    fun pauseWorkout() {
+        if (_workoutState.value == WorkoutState.ACTIVE || _workoutState.value == WorkoutState.MIRRORED) {
+            _workoutState.value = WorkoutState.PAUSED
+            vibratePattern(longArrayOf(0, 300))
+            tickerJob?.cancel()
+        }
+    }
+
+    fun resumeWorkout() {
+        if (_workoutState.value == WorkoutState.PAUSED) {
+            _workoutState.value = WorkoutState.ACTIVE
+            vibratePattern(longArrayOf(0, 150, 100, 150))
+            startTicker()
+        }
+    }
+
+    fun finishWorkout() {
+        _workoutState.value = WorkoutState.FINISHED
+        tickerJob?.cancel()
+        sensorTracker.stopTracking()
+
+        // Haptic celebratory vibration
+        vibratePattern(longArrayOf(0, 200, 100, 200, 100, 400))
+
+        val finalMetrics = sensorTracker.liveMetrics.value
+        scope.launch {
+            if (currentSessionId > 0) {
+                val updated = WorkoutSessionEntity(
+                    id = currentSessionId,
+                    workoutType = _currentWorkoutType.value.displayName,
+                    startTime = sessionStartTime,
+                    endTime = System.currentTimeMillis(),
+                    durationSeconds = elapsedSeconds,
+                    totalSteps = finalMetrics.steps,
+                    avgBpm = finalMetrics.heartRate,
+                    maxBpm = finalMetrics.heartRate,
+                    caloriesKcal = finalMetrics.caloriesKcal,
+                    distanceMeters = finalMetrics.distanceMeters,
+                    elevationGainMeters = finalMetrics.elevationGainMeters,
+                    isSyncedToPhone = false
+                )
+                repository.updateWorkoutSession(updated)
+            }
+        }
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    fun discardWorkout() {
+        _workoutState.value = WorkoutState.IDLE
+        tickerJob?.cancel()
+        sensorTracker.stopTracking()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun startTicker() {
+        tickerJob?.cancel()
+        tickerJob = scope.launch {
+            while (isActive) {
+                delay(1000L)
+                elapsedSeconds++
+                sensorTracker.tickTimer(elapsedSeconds)
+
+                val metrics = sensorTracker.liveMetrics.value
+                val hr = sensorTracker.liveHeartRate.value
+
+                // Broadcast live streams to phone
+                if (hr.bpm > 0) {
+                    phoneMessaging.broadcastHeartRate(hr.bpm, hr.accuracy)
+                }
+                if (metrics.cadenceSpm > 0) {
+                    phoneMessaging.broadcastCadence(metrics.cadenceSpm)
+                }
+
+                // Check kilometer splits for vibration cue
+                val currentKm = (metrics.distanceMeters / 1000.0).toInt()
+                if (currentKm > lastVibratedKilometer && currentKm > 0) {
+                    lastVibratedKilometer = currentKm
+                    // 3 rhythmic pulses for split cue
+                    vibratePattern(longArrayOf(0, 200, 150, 200, 150, 300))
+                }
+
+                // Check HR zone alerts (e.g. entering Max zone)
+                if (hr.bpm >= HeartRateZone.MAX.minBpm) {
+                    // subtle double alert
+                    vibratePattern(longArrayOf(0, 100, 80, 100))
+                }
+
+                // Update notification text
+                val timeStr = formatDuration(elapsedSeconds)
+                val notification = buildOngoingNotification(timeStr, hr.bpm)
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                notificationManager.notify(NOTIFICATION_ID, notification)
+            }
+        }
+    }
+
+    private fun formatDuration(seconds: Long): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return String.format("%02d:%02d", m, s)
+    }
+
+    private fun buildOngoingNotification(timeStr: String, bpm: Int): Notification {
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, MilesWearApplication.NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("${_currentWorkoutType.value.displayName} • $timeStr")
+            .setContentText(if (bpm > 0) "$bpm BPM • ${sensorTracker.liveMetrics.value.caloriesKcal} kcal" else "Active tracking...")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_WORKOUT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        val ongoingActivity = OngoingActivity.Builder(this, NOTIFICATION_ID, builder)
+            .setStaticIcon(R.drawable.ic_launcher_foreground)
+            .setTouchIntent(pendingIntent)
+            .setStatus(
+                Status.Builder()
+                    .addTemplate("${_currentWorkoutType.value.displayName} $timeStr")
+                    .build()
+            )
+            .build()
+
+        ongoingActivity.apply(this)
+        return builder.build()
+    }
+
+    private fun vibratePattern(timings: LongArray) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vibratorManager?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+
+            vibrator?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val effect = VibrationEffect.createWaveform(timings, -1)
+                    it.vibrate(effect)
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(timings, -1)
+                }
+            }
+        } catch (e: Exception) {
+            // gracefully fallback if vibration permission or hardware unavailable
+        }
+    }
+
+    override fun onDestroy() {
+        tickerJob?.cancel()
+        sensorTracker.stopTracking()
+        super.onDestroy()
+    }
+}

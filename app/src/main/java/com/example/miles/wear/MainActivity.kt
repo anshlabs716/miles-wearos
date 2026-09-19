@@ -1,0 +1,220 @@
+package com.example.miles.wear
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material3.Text
+import androidx.wear.compose.navigation.SwipeDismissableNavHost
+import androidx.wear.compose.navigation.composable
+import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
+import com.example.miles.wear.ui.screens.DashboardScreen
+import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
+import com.example.miles.wear.ui.screens.SensorsDiagnosticScreen
+import com.example.miles.wear.ui.screens.WaterLockScreen
+import com.example.miles.wear.ui.screens.WorkoutSummaryScreen
+import com.example.miles.wear.ui.theme.CoralFlame
+import com.example.miles.wear.ui.theme.MilesWearTheme
+import com.example.miles.wear.ui.theme.MutedGray
+import com.example.miles.wear.ui.theme.NeonCyan
+import com.example.miles.wear.ui.theme.OLEDBlack
+import com.example.miles.wear.ui.theme.VividGreen
+
+class MainActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val navToMirrored = intent.getBooleanExtra("NAV_TO_MIRRORED", false)
+
+        setContent {
+            MilesWearTheme {
+                MilesAppContent(initialNavToMirrored = navToMirrored)
+            }
+        }
+    }
+}
+
+@Composable
+fun MilesAppContent(initialNavToMirrored: Boolean = false) {
+    val navController = rememberSwipeDismissableNavController()
+    var permissionsGranted by remember { mutableStateOf(false) }
+
+    val requiredPermissions = remember {
+        val list = mutableListOf(
+            Manifest.permission.BODY_SENSORS,
+            Manifest.permission.ACTIVITY_RECOGNITION,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        list.toTypedArray()
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val allGranted = results.values.all { it }
+        permissionsGranted = allGranted
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        val allHave = requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        permissionsGranted = allHave
+        if (!allHave) {
+            permissionLauncher.launch(requiredPermissions)
+        }
+        if (initialNavToMirrored) {
+            navController.navigate("mirrored_workout")
+        }
+    }
+
+    if (!permissionsGranted) {
+        PermissionRequestScreen(
+            onRequest = { permissionLauncher.launch(requiredPermissions) }
+        )
+    } else {
+        SwipeDismissableNavHost(
+            navController = navController,
+            startDestination = "dashboard"
+        ) {
+            composable("dashboard") {
+                DashboardScreen(
+                    onStartWorkout = { type ->
+                        navController.navigate("active_workout/${type.name}")
+                    },
+                    onOpenDiagnostics = {
+                        navController.navigate("diagnostics")
+                    },
+                    onOpenMirrored = {
+                        navController.navigate("mirrored_workout")
+                    }
+                )
+            }
+
+            composable("active_workout/{type}") { backStackEntry ->
+                val typeName = backStackEntry.arguments?.getString("type") ?: WorkoutType.RUN.name
+                val type = WorkoutType.values().firstOrNull { it.name == typeName } ?: WorkoutType.RUN
+                ActiveWorkoutScreen(
+                    workoutType = type,
+                    onFinishWorkout = {
+                        navController.navigate("workout_summary") {
+                            popUpTo("dashboard")
+                        }
+                    },
+                    onEnableWaterLock = {
+                        navController.navigate("water_lock")
+                    }
+                )
+            }
+
+            composable("mirrored_workout") {
+                MirroredWorkoutScreen(
+                    onExitMirrored = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable("workout_summary") {
+                WorkoutSummaryScreen(
+                    onDone = {
+                        navController.navigate("dashboard") {
+                            popUpTo("dashboard") { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable("diagnostics") {
+                SensorsDiagnosticScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("water_lock") {
+                WaterLockScreen(
+                    onUnlock = { navController.popBackStack() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PermissionRequestScreen(onRequest: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(OLEDBlack)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "⚡ SENSORS NEEDED",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = NeonCyan,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "MILES requires Body Sensors, GPS, and Activity recognition for real wrist telemetry.",
+            fontSize = 11.sp,
+            color = MutedGray,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Chip(
+            onClick = onRequest,
+            colors = ChipDefaults.chipColors(
+                backgroundColor = VividGreen,
+                contentColor = Color.Black
+            ),
+            modifier = Modifier.fillMaxWidth(0.9f),
+            label = {
+                Text(
+                    text = "Grant Permissions",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            }
+        )
+    }
+}
