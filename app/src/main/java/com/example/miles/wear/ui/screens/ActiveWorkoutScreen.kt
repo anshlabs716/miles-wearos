@@ -45,11 +45,15 @@ import androidx.wear.compose.material.ScalingLazyColumn
 import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
+import com.example.miles.wear.data.model.GpsPoint
 import com.example.miles.wear.data.model.GpsStatus
 import com.example.miles.wear.data.model.HeartRateZone
+import com.example.miles.wear.data.model.HudLayoutMode
+import com.example.miles.wear.data.model.PrimaryMetricType
 import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.service.WorkoutTrackingService
 import com.example.miles.wear.ui.components.HeartRateZoneRing
+import com.example.miles.wear.ui.components.RouteMapView
 import com.example.miles.wear.ui.components.StatPill
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
@@ -79,9 +83,11 @@ fun ActiveWorkoutScreen(
     val liveHr by sensorTracker.liveHeartRate.collectAsStateWithLifecycle()
     val gpsStatus by sensorTracker.gpsStatus.collectAsStateWithLifecycle()
     val isLowPower by sensorTracker.isLowPowerMode.collectAsStateWithLifecycle()
+    val recordedRoute by sensorTracker.recordedRoute.collectAsStateWithLifecycle()
 
     var isPaused by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showLiveMap by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -97,6 +103,7 @@ fun ActiveWorkoutScreen(
     val formattedTime = String.format("%02d:%02d", elapsedMinutes, elapsedSeconds)
     val distanceFormatted = settings.unit.formatDistance(metrics.distanceMeters)
     val paceFormatted = settings.unit.formatPace(metrics.distanceMeters, metrics.elapsedSeconds)
+    val speedFormatted = settings.unit.formatSpeed(metrics.speedMps)
 
     // Discard Confirmation Dialog
     if (showDiscardDialog) {
@@ -225,7 +232,7 @@ fun ActiveWorkoutScreen(
                 }
             }
 
-            // Paused Banner or Main Timer Display
+            // Primary Metric Display (Adapts to settings.primaryMetric and settings.hudLayout)
             item {
                 if (isPaused) {
                     Column(
@@ -251,16 +258,62 @@ fun ActiveWorkoutScreen(
                         )
                     }
                 } else {
+                    val timerSize = if (settings.hudLayout == HudLayoutMode.STATS_LARGE) 42.sp else 34.sp
                     Text(
                         text = formattedTime,
-                        fontSize = 34.sp,
+                        fontSize = timerSize,
                         fontWeight = FontWeight.Black,
                         color = Color.White
                     )
                 }
             }
 
-            // Distance & Pace Row
+            // Featured Hero Primary Metric Card (Configured by user in Settings)
+            if (settings.primaryMetric != PrimaryMetricType.DISTANCE) {
+                item {
+                    val (primaryVal, primaryLbl, primaryClr) = when (settings.primaryMetric) {
+                        PrimaryMetricType.PACE_SPEED -> {
+                            if (workoutType == WorkoutType.CYCLING) {
+                                Triple("$speedFormatted ${settings.unit.speedLabel}", "CURRENT SPEED", NeonCyan)
+                            } else {
+                                Triple("$paceFormatted ${settings.unit.paceLabel}", "CURRENT PACE", NeonCyan)
+                            }
+                        }
+                        PrimaryMetricType.HEART_RATE -> {
+                            val hrVal = if (liveHr.bpm > 0) "${liveHr.bpm} BPM" else "-- BPM"
+                            Triple(hrVal, "HEART RATE", CoralFlame)
+                        }
+                        PrimaryMetricType.STEPS -> Triple("${metrics.steps}", "TOTAL STEPS", ElectricAmber)
+                        PrimaryMetricType.CALORIES -> Triple("${metrics.caloriesKcal} kcal", "CALORIES BURNED", CoralFlame)
+                        else -> Triple("$distanceFormatted ${settings.unit.distanceLabel}", "DISTANCE", VividGreen)
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF16161A))
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = primaryLbl,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MutedGray,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = primaryVal,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            color = primaryClr
+                        )
+                    }
+                }
+            }
+
+            // Distance & Activity-Specific Metric (Pace / Speed / Elev)
             item {
                 Row(
                     modifier = Modifier
@@ -274,48 +327,70 @@ fun ActiveWorkoutScreen(
                         color = VividGreen,
                         modifier = Modifier.weight(1f)
                     )
-                    StatPill(
-                        value = "$paceFormatted ${settings.unit.paceLabel}",
-                        label = "PACE",
-                        color = NeonCyan,
-                        modifier = Modifier.weight(1f)
-                    )
+                    when (workoutType) {
+                        WorkoutType.CYCLING -> {
+                            StatPill(
+                                value = "$speedFormatted ${settings.unit.speedLabel}",
+                                label = "SPEED",
+                                color = NeonCyan,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        WorkoutType.HIKE -> {
+                            StatPill(
+                                value = String.format("+%.0fm", metrics.elevationGainMeters),
+                                label = "ELEV GAIN",
+                                color = ElectricAmber,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        else -> {
+                            StatPill(
+                                value = "$paceFormatted ${settings.unit.paceLabel}",
+                                label = "PACE",
+                                color = NeonCyan,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             }
 
-            // Heart Rate HUD
-            item {
-                if (!sensorTracker.isHeartRateSensorPresent) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF18181A))
-                            .padding(6.dp)
-                    ) {
-                        Text(
-                            text = "♥ -- BPM",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MutedGray
-                        )
-                        Text(
-                            text = "Sensor unavailable",
-                            fontSize = 9.sp,
-                            color = MutedGray
+            // Heart Rate HUD (Configurable in Settings)
+            if (settings.showHeartRateZoneRing) {
+                item {
+                    if (!sensorTracker.isHeartRateSensorPresent) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF18181A))
+                                .padding(6.dp)
+                        ) {
+                            Text(
+                                text = "♥ -- BPM",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MutedGray
+                            )
+                            Text(
+                                text = "Sensor unavailable",
+                                fontSize = 9.sp,
+                                color = MutedGray
+                            )
+                        }
+                    } else {
+                        HeartRateZoneRing(
+                            bpm = liveHr.bpm,
+                            accuracy = liveHr.accuracy,
+                            modifier = Modifier.padding(vertical = 2.dp)
                         )
                     }
-                } else {
-                    HeartRateZoneRing(
-                        bpm = liveHr.bpm,
-                        accuracy = liveHr.accuracy,
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
                 }
             }
 
-            // Steps & Calories Row
+            // Steps & Calories Row (with Cadence for running/walking)
             item {
                 Row(
                     modifier = Modifier
@@ -323,18 +398,78 @@ fun ActiveWorkoutScreen(
                         .padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    StatPill(
-                        value = "${metrics.steps} steps",
-                        label = "WORKOUT STEPS",
-                        color = ElectricAmber,
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (workoutType == WorkoutType.RUN || workoutType == WorkoutType.WALK) {
+                        StatPill(
+                            value = "${metrics.steps} (${metrics.cadenceSpm} spm)",
+                            label = "STEPS • CADENCE",
+                            color = ElectricAmber,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        StatPill(
+                            value = "${metrics.steps} steps",
+                            label = "WORKOUT STEPS",
+                            color = ElectricAmber,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                     StatPill(
                         value = "${metrics.caloriesKcal} kcal",
                         label = "CALORIES",
                         color = CoralFlame,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            // Live Map HUD (toggleable or expandable for GPS workouts, configurable in Settings)
+            if (settings.showGpsMapInHud && workoutType != WorkoutType.OTHER && workoutType != WorkoutType.GENERAL) {
+                item {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(0.92f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Chip(
+                            onClick = { showLiveMap = !showLiveMap },
+                            colors = ChipDefaults.chipColors(
+                                backgroundColor = if (showLiveMap) Color(0xFF132A38) else Color(0xFF141418),
+                                contentColor = NeonCyan
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                            label = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "🗺️", fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (showLiveMap) "Hide Live Map" else "Show Live Map",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NeonCyan
+                                    )
+                                }
+                            }
+                        )
+
+                        if (showLiveMap) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            RouteMapView(
+                                route = recordedRoute,
+                                currentLocation = recordedRoute.lastOrNull(),
+                                enableReplay = false,
+                                showControls = true,
+                                routeColor = settings.themeAccent.primaryColor,
+                                routeThickness = 3.5f,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                            )
+                        }
+                    }
                 }
             }
 

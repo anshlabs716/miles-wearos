@@ -109,7 +109,9 @@ class WorkoutTrackingService : Service() {
         lastVibratedKilometer = 0
 
         // Haptic feedback for workout start
-        vibratePattern(longArrayOf(0, 150, 100, 200))
+        if (repository.settings.value.workoutStartHaptic) {
+            vibratePattern(longArrayOf(0, 150, 100, 200))
+        }
 
         val isIndoor = (type == WorkoutType.OTHER)
         sensorTracker.startTracking(isIndoor = isIndoor)
@@ -138,7 +140,9 @@ class WorkoutTrackingService : Service() {
     fun pauseWorkout() {
         if (_workoutState.value == WorkoutState.RUNNING || _workoutState.value == WorkoutState.MIRRORED) {
             _workoutState.value = WorkoutState.PAUSED
-            vibratePattern(longArrayOf(0, 300))
+            if (repository.settings.value.workoutPauseResumeHaptic) {
+                vibratePattern(longArrayOf(0, 300))
+            }
             tickerJob?.cancel()
         }
     }
@@ -146,7 +150,9 @@ class WorkoutTrackingService : Service() {
     fun resumeWorkout() {
         if (_workoutState.value == WorkoutState.PAUSED) {
             _workoutState.value = WorkoutState.RUNNING
-            vibratePattern(longArrayOf(0, 150, 100, 150))
+            if (repository.settings.value.workoutPauseResumeHaptic) {
+                vibratePattern(longArrayOf(0, 150, 100, 150))
+            }
             startTicker()
         }
     }
@@ -222,7 +228,9 @@ class WorkoutTrackingService : Service() {
                 val currentKm = (metrics.distanceMeters / 1000.0).toInt()
                 if (currentKm > lastVibratedKilometer && currentKm > 0) {
                     lastVibratedKilometer = currentKm
-                    vibratePattern(longArrayOf(0, 200, 150, 200, 150, 300))
+                    if (repository.settings.value.splitHaptic) {
+                        vibratePattern(longArrayOf(0, 200, 150, 200, 150, 300))
+                    }
                 }
 
                 // Check HR zone alerts
@@ -281,6 +289,7 @@ class WorkoutTrackingService : Service() {
     }
 
     private fun vibratePattern(timings: LongArray) {
+        if (!repository.settings.value.hapticAlertsEnabled) return
         try {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager

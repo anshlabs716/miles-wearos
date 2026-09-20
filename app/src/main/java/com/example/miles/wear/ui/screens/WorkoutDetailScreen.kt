@@ -41,6 +41,8 @@ import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.sensor.SensorTracker
+import com.example.miles.wear.ui.components.RouteMapView
 import com.example.miles.wear.ui.components.StatPill
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
@@ -78,6 +80,10 @@ fun WorkoutDetailScreen(
     val distFormatted = settings.unit.formatDistance(cur?.distanceMeters ?: 0.0)
     val paceFormatted = settings.unit.formatPace(cur?.distanceMeters ?: 0.0, cur?.durationSeconds ?: 0L)
     val emoji = WorkoutType.fromString(cur?.workoutType ?: "").emoji
+
+    val parsedRoute = remember(cur?.routeGeoJson) {
+        SensorTracker.parseRouteJson(cur?.routeGeoJson)
+    }
 
     Scaffold(
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) }
@@ -184,6 +190,38 @@ fun WorkoutDetailScreen(
                         color = CoralFlame,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            // GPS Route Map & Replay (if route recorded)
+            if (parsedRoute.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "GPS ROUTE & REPLAY",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 2.dp)
+                        )
+                        RouteMapView(
+                            route = parsedRoute,
+                            enableReplay = true,
+                            showControls = true,
+                            routeColor = settings.themeAccent.primaryColor,
+                            routeThickness = 3.5f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp)
+                        )
+                    }
                 }
             }
 

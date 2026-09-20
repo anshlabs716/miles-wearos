@@ -38,10 +38,14 @@ import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.data.model.DistanceUnit
+import com.example.miles.wear.data.model.HudLayoutMode
+import com.example.miles.wear.data.model.PrimaryMetricType
+import com.example.miles.wear.data.model.ThemeAccent
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
 import com.example.miles.wear.ui.theme.NeonCyan
+import com.example.miles.wear.ui.theme.NeonPurple
 import com.example.miles.wear.ui.theme.OLEDBlack
 import com.example.miles.wear.ui.theme.VividGreen
 import kotlinx.coroutines.launch
@@ -147,10 +151,295 @@ fun SettingsScreen(
                 )
             }
 
+            // Section: Themes & Visual Customization
+            item {
+                Text(
+                    text = "THEME & ACCENT",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonCyan,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        val accents = ThemeAccent.values()
+                        val nextIdx = (settings.themeAccent.ordinal + 1) % accents.size
+                        repository.updateSettings(settings.copy(themeAccent = accents[nextIdx]))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Color: ${settings.themeAccent.title}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(settings.themeAccent.colorHex)
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Tap to cycle theme palette",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(highContrastText = !settings.highContrastText))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.highContrastText) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "High Contrast Mode",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.highContrastText) "ON • Maximum readability" else "OFF • Standard M3",
+                            fontSize = 9.sp,
+                            color = if (settings.highContrastText) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Section: Dashboard Customization
+            item {
+                Text(
+                    text = "DASHBOARD CUSTOMIZATION",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonCyan,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(compactCards = !settings.compactCards))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.compactCards) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Compact Card Layout",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.compactCards) "Compact • Dense info" else "Expanded • High spacing",
+                            fontSize = 9.sp,
+                            color = if (settings.compactCards) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(showRecentActivitiesInDashboard = !settings.showRecentActivitiesInDashboard))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.showRecentActivitiesInDashboard) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Recent Activities Card",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.showRecentActivitiesInDashboard) "Visible on Home" else "Hidden on Home",
+                            fontSize = 9.sp,
+                            color = if (settings.showRecentActivitiesInDashboard) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Section: Workout HUD Customization
+            item {
+                Text(
+                    text = "WORKOUT HUD & METRICS",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ElectricAmber,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        val metrics = PrimaryMetricType.values()
+                        val nextIdx = (settings.primaryMetric.ordinal + 1) % metrics.size
+                        repository.updateSettings(settings.copy(primaryMetric = metrics[nextIdx]))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Primary: ${settings.primaryMetric.title}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Hero metric featured during workout",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        val layouts = HudLayoutMode.values()
+                        val nextIdx = (settings.hudLayout.ordinal + 1) % layouts.size
+                        repository.updateSettings(settings.copy(hudLayout = layouts[nextIdx]))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "HUD: ${settings.hudLayout.title}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Tap to switch HUD presentation",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(showGpsMapInHud = !settings.showGpsMapInHud))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.showGpsMapInHud) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Live GPS Route Map",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.showGpsMapInHud) "ON • Show route breadcrumb" else "OFF • Stats only",
+                            fontSize = 9.sp,
+                            color = if (settings.showGpsMapInHud) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(showHeartRateZoneRing = !settings.showHeartRateZoneRing))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.showHeartRateZoneRing) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "HR Zone Dial Ring",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.showHeartRateZoneRing) "ON • Color-coded bezel ring" else "OFF",
+                            fontSize = 9.sp,
+                            color = if (settings.showHeartRateZoneRing) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
             // Section: Display & Screen
             item {
                 Text(
-                    text = "DISPLAY",
+                    text = "DISPLAY & AOD",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = NeonCyan,
@@ -182,7 +471,7 @@ fun SettingsScreen(
                     },
                     secondaryLabel = {
                         Text(
-                            text = if (settings.keepScreenOn) "ON • During active workout" else "OFF",
+                            text = if (settings.keepScreenOn) "ON • During active workout" else "OFF • Allow screen timeout",
                             fontSize = 9.sp,
                             color = if (settings.keepScreenOn) VividGreen else MutedGray
                         )
@@ -258,6 +547,231 @@ fun SettingsScreen(
                             text = if (settings.hrEnabled) "ON • Continuous wrist telemetry" else "OFF",
                             fontSize = 9.sp,
                             color = if (settings.hrEnabled) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(stepTrackingEnabled = !settings.stepTrackingEnabled))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.stepTrackingEnabled) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Step Counter",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.stepTrackingEnabled) "ON • Hardware pedometer" else "OFF",
+                            fontSize = 9.sp,
+                            color = if (settings.stepTrackingEnabled) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Section: Workout Behavior & Battery
+            item {
+                Text(
+                    text = "WORKOUT & BATTERY",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ElectricAmber,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(autoPauseEnabled = !settings.autoPauseEnabled))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.autoPauseEnabled) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Auto-Pause",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.autoPauseEnabled) "ON • Pauses when stationary" else "OFF • Manual control only",
+                            fontSize = 9.sp,
+                            color = if (settings.autoPauseEnabled) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(hapticAlertsEnabled = !settings.hapticAlertsEnabled))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.hapticAlertsEnabled) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Haptic Cues Master",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.hapticAlertsEnabled) "ON • Vibrations active" else "OFF • All silent",
+                            fontSize = 9.sp,
+                            color = if (settings.hapticAlertsEnabled) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            if (settings.hapticAlertsEnabled) {
+                item {
+                    Chip(
+                        onClick = {
+                            repository.updateSettings(settings.copy(workoutStartHaptic = !settings.workoutStartHaptic))
+                        },
+                        colors = ChipDefaults.chipColors(
+                            backgroundColor = if (settings.workoutStartHaptic) Color(0xFF182A3A) else Color(0xFF18181C),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 2.dp),
+                        label = {
+                            Text(
+                                text = "Start / Countdown Haptic",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White
+                            )
+                        },
+                        secondaryLabel = {
+                            Text(
+                                text = if (settings.workoutStartHaptic) "Enabled" else "Disabled",
+                                fontSize = 9.sp,
+                                color = if (settings.workoutStartHaptic) VividGreen else MutedGray
+                            )
+                        }
+                    )
+                }
+
+                item {
+                    Chip(
+                        onClick = {
+                            repository.updateSettings(settings.copy(workoutPauseResumeHaptic = !settings.workoutPauseResumeHaptic))
+                        },
+                        colors = ChipDefaults.chipColors(
+                            backgroundColor = if (settings.workoutPauseResumeHaptic) Color(0xFF182A3A) else Color(0xFF18181C),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 2.dp),
+                        label = {
+                            Text(
+                                text = "Pause / Resume Haptic",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White
+                            )
+                        },
+                        secondaryLabel = {
+                            Text(
+                                text = if (settings.workoutPauseResumeHaptic) "Enabled" else "Disabled",
+                                fontSize = 9.sp,
+                                color = if (settings.workoutPauseResumeHaptic) VividGreen else MutedGray
+                            )
+                        }
+                    )
+                }
+
+                item {
+                    Chip(
+                        onClick = {
+                            repository.updateSettings(settings.copy(splitHaptic = !settings.splitHaptic))
+                        },
+                        colors = ChipDefaults.chipColors(
+                            backgroundColor = if (settings.splitHaptic) Color(0xFF182A3A) else Color(0xFF18181C),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 2.dp),
+                        label = {
+                            Text(
+                                text = "Mile / KM Split Haptic",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White
+                            )
+                        },
+                        secondaryLabel = {
+                            Text(
+                                text = if (settings.splitHaptic) "Enabled" else "Disabled",
+                                fontSize = 9.sp,
+                                color = if (settings.splitHaptic) VividGreen else MutedGray
+                            )
+                        }
+                    )
+                }
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(batterySaverEnabled = !settings.batterySaverEnabled))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.batterySaverEnabled) Color(0xFF382010) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Battery Saver Mode",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (settings.batterySaverEnabled) ElectricAmber else Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.batterySaverEnabled) "ON • Optimized GPS & ambient rate" else "OFF • High accuracy",
+                            fontSize = 9.sp,
+                            color = if (settings.batterySaverEnabled) ElectricAmber else MutedGray
                         )
                     }
                 )

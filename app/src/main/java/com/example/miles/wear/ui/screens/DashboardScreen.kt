@@ -46,6 +46,7 @@ import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.R
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
+import com.example.miles.wear.data.model.GpsStatus
 import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
@@ -78,16 +79,32 @@ fun DashboardScreen(
     val mirroredMetrics by phoneMessaging.mirroredMetrics.collectAsStateWithLifecycle()
     val unsyncedCount by repository.unsyncedCount.collectAsStateWithLifecycle(initialValue = 0)
     val sessions by repository.allSessions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val todaySessions by repository.getTodaySessions().collectAsStateWithLifecycle(initialValue = emptyList())
     val settings by repository.settings.collectAsStateWithLifecycle()
+    val gpsStatus by sensorTracker.gpsStatus.collectAsStateWithLifecycle()
+    val batteryPercent by sensorTracker.batteryPercent.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         phoneMessaging.refreshConnectedNodes()
     }
 
-    val displaySteps = if (metrics.dailySteps > 0) metrics.dailySteps else if (metrics.steps > 0) metrics.steps else 8421
-    val displayDistanceMeters = if (metrics.distanceMeters > 0) metrics.distanceMeters else 5700.0
+    // Real aggregated metrics for Today (from live sensors + completed workouts today)
+    val todayWorkoutSteps = todaySessions.sumOf { it.totalSteps }
+    val displaySteps = if (metrics.dailySteps > 0) {
+        metrics.dailySteps
+    } else {
+        todayWorkoutSteps + metrics.steps
+    }
+
+    val todayWorkoutDistance = todaySessions.sumOf { it.distanceMeters }
+    val displayDistanceMeters = todayWorkoutDistance + metrics.distanceMeters
     val formattedDistance = settings.unit.formatDistance(displayDistanceMeters)
+
+    val todayWorkoutSeconds = todaySessions.sumOf { it.durationSeconds } + metrics.elapsedSeconds
+    val todayActiveMinutes = (todayWorkoutSeconds / 60).toInt()
+
+    val todayCalories = todaySessions.sumOf { it.caloriesKcal } + metrics.caloriesKcal
 
     Scaffold(
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) }
@@ -110,23 +127,67 @@ fun DashboardScreen(
         ) {
             // Header: Official MILES Logo & Title
             item {
+                val headerPadding = if (settings.compactCards) 10.dp else 16.dp
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 2.dp)
+                    modifier = Modifier.padding(top = headerPadding, bottom = 2.dp)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_miles_logo),
                         contentDescription = "MILES Logo",
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(if (settings.compactCards) 22.dp else 28.dp)
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "MILES",
-                        fontSize = 16.sp,
+                        fontSize = if (settings.compactCards) 14.sp else 16.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
                         letterSpacing = 2.sp
                     )
+
+                    // Quick Glanceable Device Status: Watch Battery & GPS (Configurable in Settings)
+                    if (settings.showBatteryInDashboard || settings.showGpsInDashboard) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (settings.showBatteryInDashboard) {
+                                // Watch Battery Status
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "🔋", fontSize = 9.sp)
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = "$batteryPercent%",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (batteryPercent > 20) VividGreen else CoralFlame
+                                    )
+                                }
+                            }
+
+                            if (settings.showGpsInDashboard) {
+                                // GPS Status Pill
+                                val gpsColor = when (gpsStatus) {
+                                    GpsStatus.READY -> VividGreen
+                                    GpsStatus.SEARCHING -> ElectricAmber
+                                    GpsStatus.UNAVAILABLE -> CoralFlame
+                                    GpsStatus.INDOOR -> MutedGray
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "📍", fontSize = 9.sp)
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = gpsStatus.label,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = gpsColor
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -161,7 +222,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Today's Steps Card (Matches prompt: "Today's steps 8,421")
+            // Today's Activity Card (Live hardware sensors & today's recorded workouts)
             item {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -185,7 +246,7 @@ fun DashboardScreen(
                         color = VividGreen
                     )
 
-                    // Distance (Matches prompt: "Distance 5.7 km")
+                    // Distance (from active workouts and recorded daily sessions)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
@@ -215,13 +276,12 @@ fun DashboardScreen(
                     ) {
                         // Active time
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "42 min", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                            Text(text = "$todayActiveMinutes min", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                             Text(text = "Active", fontSize = 8.sp, color = MutedGray)
                         }
                         // Calories
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            val cals = if (metrics.caloriesKcal > 0) metrics.caloriesKcal else 380
-                            Text(text = "$cals kcal", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CoralFlame)
+                            Text(text = "$todayCalories kcal", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CoralFlame)
                             Text(text = "Burned", fontSize = 8.sp, color = MutedGray)
                         }
                         // Heart Rate
@@ -238,6 +298,37 @@ fun DashboardScreen(
                                 text = if (sensorTracker.isHeartRateSensorPresent) "BPM" else "No Sensor",
                                 fontSize = 8.sp,
                                 color = MutedGray
+                            )
+                        }
+                    }
+
+                    // Daily Activity Progress Bar (10,000 steps daily goal)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val stepGoal = 10000
+                    val progressFraction = (displaySteps.toFloat() / stepGoal).coerceIn(0f, 1f)
+                    val progressPercent = (progressFraction * 100).toInt()
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "DAILY GOAL (10k)", fontSize = 8.sp, color = MutedGray, fontWeight = FontWeight.Bold)
+                            Text(text = "$progressPercent%", fontSize = 8.sp, color = VividGreen, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color(0xFF222834))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progressFraction)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(VividGreen)
                             )
                         }
                     }
@@ -454,6 +545,60 @@ fun DashboardScreen(
                             )
                         }
                     )
+                }
+
+                // Recent Activities Summary (up to 3 recent workouts, configurable in settings)
+                if (settings.showRecentActivitiesInDashboard && sessions.size > 1) {
+                    item {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "RECENT ACTIVITIES",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MutedGray,
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+                    }
+
+                    val recentSublist = sessions.drop(1).take(2)
+                    for (pastSession in recentSublist) {
+                        item {
+                            val durMin = pastSession.durationSeconds / 60
+                            val dist = settings.unit.formatDistance(pastSession.distanceMeters)
+                            val actEmoji = WorkoutType.fromString(pastSession.workoutType).emoji
+
+                            Chip(
+                                onClick = { onSelectSession(pastSession.id) },
+                                colors = ChipDefaults.chipColors(
+                                    backgroundColor = Color(0xFF141416),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth(0.92f)
+                                    .padding(vertical = 2.dp),
+                                label = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(text = actEmoji, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = pastSession.workoutType,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color.White
+                                        )
+                                    }
+                                },
+                                secondaryLabel = {
+                                    Text(
+                                        text = "$durMin min • $dist ${settings.unit.distanceLabel}",
+                                        fontSize = 8.sp,
+                                        color = MutedGray
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
             }
 

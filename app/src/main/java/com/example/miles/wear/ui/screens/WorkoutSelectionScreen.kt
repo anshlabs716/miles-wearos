@@ -55,8 +55,9 @@ fun WorkoutSelectionScreen(
             WorkoutType.WALK to (NeonCyan to "GPS + Wrist HR"),
             WorkoutType.RUN to (VividGreen to "GPS + Pace + Cadence"),
             WorkoutType.CYCLING to (CoralFlame to "GPS + Speed + Elev"),
-            WorkoutType.HIKE to (ElectricAmber to "GPS + Barometer + HR"),
-            WorkoutType.OTHER to (Color(0xFFE040FB) to "Indoor Sensor HR")
+            WorkoutType.HIKE to (ElectricAmber to "GPS + Elevation + HR"),
+            WorkoutType.GENERAL to (Color(0xFFE040FB) to "Full Body Sensor HR"),
+            WorkoutType.CUSTOM to (Color(0xFFFF80AB) to "Custom Activity Metrics")
         )
     }
 

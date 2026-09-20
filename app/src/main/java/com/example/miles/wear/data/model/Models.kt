@@ -91,12 +91,56 @@ enum class DistanceUnit(
     }
 }
 
+enum class ThemeAccent(val title: String, val colorHex: Long) {
+    CYAN("MILES Cyan", 0xFF00B0FF),
+    CORAL("Coral Flame", 0xFFFF5722),
+    GREEN("Vivid Green", 0xFF00E676),
+    AMBER("Electric Amber", 0xFFFFD600),
+    PURPLE("Neon Purple", 0xFFE040FB);
+
+    val primaryColor: androidx.compose.ui.graphics.Color
+        get() = androidx.compose.ui.graphics.Color(colorHex)
+}
+
+enum class PrimaryMetricType(val title: String) {
+    DISTANCE("Distance"),
+    PACE_SPEED("Pace / Speed"),
+    HEART_RATE("Heart Rate"),
+    STEPS("Steps"),
+    CALORIES("Calories")
+}
+
+enum class HudLayoutMode(val title: String) {
+    STANDARD("Standard HUD"),
+    MAP_FOCUSED("Map First"),
+    STATS_LARGE("Large Numbers")
+}
+
 data class WearSettings(
     val unit: DistanceUnit = DistanceUnit.METRIC,
     val keepScreenOn: Boolean = true,
     val gpsEnabled: Boolean = true,
     val hrEnabled: Boolean = true,
-    val stepTrackingEnabled: Boolean = true
+    val stepTrackingEnabled: Boolean = true,
+    val autoPauseEnabled: Boolean = false,
+    val hapticAlertsEnabled: Boolean = true,
+    val batterySaverEnabled: Boolean = false,
+    // Customization & Display Preferences
+    val themeAccent: ThemeAccent = ThemeAccent.CYAN,
+    val primaryMetric: PrimaryMetricType = PrimaryMetricType.DISTANCE,
+    val hudLayout: HudLayoutMode = HudLayoutMode.STANDARD,
+    val showGpsMapInHud: Boolean = true,
+    val showCadenceInHud: Boolean = true,
+    val showHeartRateZoneRing: Boolean = true,
+    val showBatteryInDashboard: Boolean = true,
+    val showGpsInDashboard: Boolean = true,
+    val showRecentActivitiesInDashboard: Boolean = true,
+    val compactCards: Boolean = false,
+    val workoutStartHaptic: Boolean = true,
+    val workoutPauseResumeHaptic: Boolean = true,
+    val workoutFinishHaptic: Boolean = true,
+    val splitHaptic: Boolean = true,
+    val highContrastText: Boolean = false
 )
 
 enum class HeartRateZone(
