@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,6 +46,7 @@ import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
 import com.example.miles.wear.ui.screens.DashboardScreen
 import com.example.miles.wear.ui.screens.HistoryScreen
 import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
+import com.example.miles.wear.ui.screens.MapsScreen
 import com.example.miles.wear.ui.screens.SensorsDiagnosticScreen
 import com.example.miles.wear.ui.screens.SettingsScreen
 import com.example.miles.wear.ui.screens.WaterLockScreen
@@ -52,6 +58,7 @@ import com.example.miles.wear.ui.theme.MutedGray
 import com.example.miles.wear.ui.theme.NeonCyan
 import com.example.miles.wear.ui.theme.OLEDBlack
 import com.example.miles.wear.ui.theme.VividGreen
+import com.example.miles.wear.ui.components.WearNavigationControls
 
 class MainActivity : ComponentActivity() {
 
@@ -72,6 +79,14 @@ class MainActivity : ComponentActivity() {
 fun MilesAppContent(initialNavToMirrored: Boolean = false) {
     val navController = rememberSwipeDismissableNavController()
     var permissionsGranted by remember { mutableStateOf(false) }
+
+    val configuration = LocalConfiguration.current
+    val baseDensity = LocalDensity.current
+    val adaptiveScale = when {
+        configuration.screenWidthDp <= 192 -> 0.90f
+        configuration.screenWidthDp >= 225 -> 1.00f
+        else -> 0.95f
+    }
 
     val requiredPermissions = remember {
         val list = mutableListOf(
@@ -106,15 +121,22 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
         }
     }
 
-    if (!permissionsGranted) {
-        PermissionRequestScreen(
-            onRequest = { permissionLauncher.launch(requiredPermissions) }
+    CompositionLocalProvider(
+        LocalDensity provides Density(
+            density = baseDensity.density * adaptiveScale,
+            fontScale = baseDensity.fontScale
         )
-    } else {
-        SwipeDismissableNavHost(
-            navController = navController,
-            startDestination = "dashboard"
-        ) {
+    ) {
+        if (!permissionsGranted) {
+            PermissionRequestScreen(
+                onRequest = { permissionLauncher.launch(requiredPermissions) }
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                SwipeDismissableNavHost(
+                    navController = navController,
+                    startDestination = "dashboard"
+                ) {
             composable("dashboard") {
                 DashboardScreen(
                     onStartWorkout = {
@@ -128,6 +150,9 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     },
                     onOpenDiagnostics = {
                         navController.navigate("diagnostics")
+                    },
+                    onOpenMap = {
+                        navController.navigate("map")
                     },
                     onOpenMirrored = {
                         navController.navigate("mirrored_workout")
@@ -163,6 +188,10 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                         navController.navigate("water_lock")
                     }
                 )
+            }
+
+            composable("map") {
+                MapsScreen()
             }
 
             composable("mirrored_workout") {
@@ -217,6 +246,9 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                 WaterLockScreen(
                     onUnlock = { navController.popBackStack() }
                 )
+                }
+
+                WearNavigationControls(navController = navController)
             }
         }
     }
