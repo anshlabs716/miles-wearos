@@ -62,6 +62,7 @@ fun DashboardScreen(
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenMap: () -> Unit,
     onOpenMirrored: () -> Unit,
     onSelectSession: (Long) -> Unit
 ) {
@@ -356,6 +357,39 @@ fun DashboardScreen(
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center,
                             letterSpacing = 1.sp
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Map
+            item {
+                Chip(
+                    onClick = onOpenMap,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🗺️", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Map",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "OpenStreetMap • Current location",
+                            fontSize = 9.sp,
+                            color = MutedGray
                         )
                     }
                 )
