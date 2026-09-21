@@ -82,11 +82,16 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
 
     val configuration = LocalConfiguration.current
     val baseDensity = LocalDensity.current
+    val shortestSideDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
     val adaptiveScale = when {
-        configuration.screenWidthDp <= 192 -> 0.90f
-        configuration.screenWidthDp >= 225 -> 1.00f
-        else -> 0.95f
+        shortestSideDp <= 170 -> 0.82f
+        shortestSideDp <= 184 -> 0.88f
+        shortestSideDp <= 192 -> 0.92f
+        shortestSideDp <= 210 -> 0.96f
+        shortestSideDp >= 240 -> 1.06f
+        else -> 1.00f
     }
+    val adaptiveFontScale = (baseDensity.fontScale * adaptiveScale).coerceIn(0.85f, 1.15f)
 
     val requiredPermissions = remember {
         val list = mutableListOf(
@@ -124,7 +129,7 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
     CompositionLocalProvider(
         LocalDensity provides Density(
             density = baseDensity.density * adaptiveScale,
-            fontScale = baseDensity.fontScale
+            fontScale = adaptiveFontScale
         )
     ) {
         if (!permissionsGranted) {
