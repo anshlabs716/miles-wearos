@@ -65,6 +65,9 @@ dependencies {
     implementation("androidx.wear:wear:1.3.0")
     implementation("androidx.wear:wear-ongoing:1.0.0")
 
+    // OpenStreetMap map rendering (no Google Maps SDK)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
+
     // Wear Tiles & Complications
     implementation("androidx.wear.tiles:tiles:1.4.0")
     implementation("androidx.wear.protolayout:protolayout:1.2.0")
