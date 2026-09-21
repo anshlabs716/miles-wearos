@@ -67,7 +67,10 @@ fun WearNavigationControls(
 
         Chip(
             onClick = {
-                navController.popBackStack("dashboard", inclusive = false)
+                navController.navigate("dashboard") {
+                    popUpTo("dashboard") { inclusive = false }
+                    launchSingleTop = true
+                }
             },
             colors = ChipDefaults.chipColors(
                 backgroundColor = NeonCyan,
