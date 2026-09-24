@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -20,14 +21,15 @@ import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.navigation.NavHostController
+import androidx.navigation.NavHostController
 import androidx.wear.compose.navigation.currentBackStackEntryAsState
 import com.example.miles.wear.ui.theme.NeonCyan
 import com.example.miles.wear.ui.theme.OLEDBlack
 
 @Composable
 fun WearNavigationControls(
-    navController: NavHostController
+    navController: NavHostController,
+    modifier: Modifier = Modifier
 ) {
     val entry by navController.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "dashboard"
@@ -37,7 +39,7 @@ fun WearNavigationControls(
     val compact = width <= 192
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(Color(0xEE000000))
             .navigationBarsPadding()
