@@ -37,6 +37,7 @@ object PhoneAppDetector {
             if (launch != null) {
                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launch)
+                android.util.Log.i("MilesAppDetect", "opened MILES phone app")
                 true
             } else false
         } catch (_: Exception) {

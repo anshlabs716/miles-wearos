@@ -103,6 +103,14 @@ class PhoneMessagingManager(
                 nearbyCapabilityCount = capabilityCount
             )
 
+            Log.i(
+                "MilesAppDetect",
+                "scan → nodes=${nodes.size} target=${phoneNode?.displayName ?: "none"} " +
+                    "milesPhoneNearby=$capabilityCount " +
+                    "localInstalled=${_connectionStatus.value.localAppInstalled} " +
+                    "localVersion=${_connectionStatus.value.localAppVersion}"
+            )
+
             if (phoneNode != null) {
                 // Auto flush offline buffered queue
                 flushOfflineQueue()
