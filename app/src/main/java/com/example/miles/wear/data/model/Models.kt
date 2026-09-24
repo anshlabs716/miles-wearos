@@ -240,7 +240,7 @@ data class PhoneConnectionStatus(
     // MILES phone app detection
     val localAppInstalled: Boolean = false,
     val localAppVersion: String = "",
-    val nearbyCapabilityCount: Int = 0
+    val nearbyPeerCount: Int = 0
 )
 
 /** Adoptable fitness companions (fed by real steps, like MILES phone). */

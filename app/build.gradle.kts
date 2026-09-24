@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.miles.wear"
         minSdk = 30
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -78,8 +78,8 @@ dependencies {
     implementation("androidx.wear.protolayout:protolayout-material:1.2.0")
     implementation("androidx.wear.watchface:watchface-complications-data-source:1.2.1")
 
-    // Play Services Wearable
-    implementation("com.google.android.gms:play-services-wearable:18.2.0")
+    // NOTE: no Google Play Services. Phone sync is GMS-free over the local
+    // network (LanTransport: UDP discovery + TCP JSON frames).
 
     // Health Services
     implementation("androidx.health:health-services-client:1.1.0-alpha04")
@@ -95,7 +95,6 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")

@@ -7,8 +7,8 @@ import android.content.pm.PackageManager
 /**
  * Detects the MILES phone app (`com.aistudio.miles.track`):
  * - **locally** — same device that this wear app runs on (PackageManager)
- * - **nearby** — reachable over the Wearable data layer (see
- *   PhoneMessagingManager capability probe for `miles_phone_app`)
+ * - **nearby** — reachable over the local network (see LanTransport, which
+ *   discovers a running phone app with GMS-free UDP beacons)
  * All values are real; version comes straight from the installed package.
  */
 object PhoneAppDetector {

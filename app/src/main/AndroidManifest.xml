@@ -83,20 +83,8 @@
             android:exported="false"
             android:foregroundServiceType="health|location" />
 
-        <!-- Wearable Data Layer Listener Service -->
-        <service
-            android:name=".service.MilesWearableListenerService"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-                <action android:name="com.google.android.gms.wearable.CAPABILITY_CHANGED" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/miles"
-                    android:scheme="wear" />
-            </intent-filter>
-        </service>
+        <!-- GMS-free: phone sync runs over local-network sockets (LanTransport),
+             so no Play Services listener service is needed. -->
 
         <!-- Glanceable Tile: Quick Start Workouts -->
         <service
