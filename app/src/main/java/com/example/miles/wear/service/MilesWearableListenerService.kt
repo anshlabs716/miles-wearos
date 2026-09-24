@@ -91,4 +91,18 @@ class MilesWearableListenerService : WearableListenerService() {
             MilesWearApplication.instance.phoneMessagingManager.refreshConnectedNodes()
         }
     }
+
+    override fun onPeerConnected(node: com.google.android.gms.wearable.Node) {
+        super.onPeerConnected(node)
+        scope.launch {
+            MilesWearApplication.instance.phoneMessagingManager.refreshConnectedNodes()
+        }
+    }
+
+    override fun onPeerDisconnected(node: com.google.android.gms.wearable.Node) {
+        super.onPeerDisconnected(node)
+        scope.launch {
+            MilesWearApplication.instance.phoneMessagingManager.refreshConnectedNodes()
+        }
+    }
 }

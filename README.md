@@ -41,6 +41,7 @@
 - Export & backup (GPX, CSV, JSON) with on-device restore
 - Import workouts + backups from any app (GPX, JSON, share-to-MILES)
 - Street + satellite map on every workout (OSM & Esri tiles)
+- Detects the MILES phone app: on this device (package check) or nearby (Wearable capability) with tap-to-open
 - Move reminders (sitting-streak nags, skip during workouts)
 - Voice navigation (spoken turn-by-turn cues)
 - Automatic km/mi splits with real pace

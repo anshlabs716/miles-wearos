@@ -56,6 +56,7 @@ import com.example.miles.wear.data.model.WeeklyProgress
 import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.engine.WearWeather
 import com.example.miles.wear.engine.WearWeatherFetcher
+import com.example.miles.wear.network.PhoneAppDetector
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
@@ -898,45 +899,79 @@ fun DashboardScreen(
                 )
             }
 
-            // Phone Connection Status Card
+            // MILES App Detection & Phone Connection Card
             item {
+                val context = LocalContext.current
                 Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF141416))
-                        .clickable {
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    // Local detection (same device) + nearby node (wear channel)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    when {
+                                        connection.localAppInstalled -> VividGreen
+                                        connection.isConnected -> NeonCyan
+                                        else -> ElectricAmber
+                                    }
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = when {
+                                connection.localAppInstalled && connection.isConnected ->
+                                    "🌍 MILES app here · v${connection.localAppVersion} + phone ${connection.phoneNodeName}"
+                                connection.localAppInstalled ->
+                                    "📱 MILES app on this device · v${connection.localAppVersion}"
+                                connection.isConnected ->
+                                    "📡 Phone Connected (${connection.phoneNodeName})"
+                                else -> "Standalone Mode (Tap to sync)"
+                            },
+                            fontSize = 9.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Left
+                        )
+                    }
+                    // Phone app reachable over the wear channel (not just installed locally)
+                    if (connection.nearbyCapabilityCount > 0 && !connection.localAppInstalled) {
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "📡 MILES phone app nearby · ${connection.nearbyCapabilityCount} reachable",
+                            fontSize = 8.sp,
+                            color = NeonCyan
+                        )
+                    }
+                    if (unsyncedCount > 0) {
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "• $unsyncedCount offline queue",
+                            fontSize = 8.sp,
+                            color = CoralFlame,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MiniActionChip("↻ Sync", ElectricAmber) {
                             coroutineScope.launch {
                                 phoneMessaging.refreshConnectedNodes()
                                 phoneMessaging.flushOfflineQueue()
                             }
                         }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (connection.isConnected) VividGreen else ElectricAmber)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (connection.isConnected) "Phone Connected (${connection.phoneNodeName})" else "Standalone Mode (Tap to sync)",
-                        fontSize = 9.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (unsyncedCount > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "• $unsyncedCount queue",
-                            fontSize = 9.sp,
-                            color = CoralFlame,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (connection.localAppInstalled) {
+                            MiniActionChip("Open MILES app", VividGreen) {
+                                PhoneAppDetector.launchPhoneApp(context)
+                            }
+                        }
                     }
                 }
             }
@@ -1079,6 +1114,31 @@ private fun QuickStartChip(
             )
         }
     )
+}
+
+/** Tiny action button used inside the MILES app detection card. */
+@Composable
+private fun MiniActionChip(
+    text: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.15f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            color = color,
+            textAlign = TextAlign.Center
+        )
+    }
 }
 
 private fun formatKm(km: Double): String =

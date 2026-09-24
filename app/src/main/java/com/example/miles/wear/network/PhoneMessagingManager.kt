@@ -37,6 +37,7 @@ class PhoneMessagingManager(
 
     companion object {
         const val CAPABILITY_WEAR_TRACKER = "miles_wear_tracker"
+        const val CAPABILITY_PHONE_APP = "miles_phone_app"
         const val PATH_HR_STREAM = "/miles/sensors/hr"
         const val PATH_CADENCE_STREAM = "/miles/sensors/cadence"
         const val PATH_WORKOUT_CONTROL = "/miles/workout/control"
@@ -78,12 +79,28 @@ class PhoneMessagingManager(
     suspend fun refreshConnectedNodes() {
         try {
             val nodes = nodeClient.connectedNodes.await()
-            val phoneNode = nodes.firstOrNull { !it.isNearby || true } // nearest phone node
+            val phoneNode = nodes.firstOrNull() // nearest phone/watch node as messaging target
             targetPhoneNode = phoneNode
+
+            // Do any reachable nodes run the MILES phone app (miles_phone_app capability)?
+            var capabilityCount = 0
+            try {
+                val phoneCap = capabilityClient
+                    .getCapability(CAPABILITY_PHONE_APP, CapabilityClient.FILTER_REACHABLE)
+                    .await()
+                capabilityCount = phoneCap.nodes.size
+            } catch (_: Exception) {
+                // capability lookup not available — node-only detection still works
+            }
+
             _connectionStatus.value = PhoneConnectionStatus(
                 isConnected = phoneNode != null,
                 phoneNodeName = phoneNode?.displayName ?: "",
-                phoneNodeId = phoneNode?.id ?: ""
+                phoneNodeId = phoneNode?.id ?: "",
+                // MILES phone app detection — local + nearby
+                localAppInstalled = PhoneAppDetector.localAppInstalled(context),
+                localAppVersion = PhoneAppDetector.localAppVersion(context) ?: "",
+                nearbyCapabilityCount = capabilityCount
             )
 
             if (phoneNode != null) {
@@ -92,7 +109,11 @@ class PhoneMessagingManager(
             }
         } catch (e: Exception) {
             Log.e("PhoneMessagingManager", "Error checking nodes", e)
-            _connectionStatus.value = PhoneConnectionStatus(isConnected = false)
+            _connectionStatus.value = PhoneConnectionStatus(
+                isConnected = false,
+                localAppInstalled = PhoneAppDetector.localAppInstalled(context),
+                localAppVersion = PhoneAppDetector.localAppVersion(context) ?: ""
+            )
         }
     }
 
