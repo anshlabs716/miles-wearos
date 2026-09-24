@@ -6,6 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.miles.wear.data.local.entity.QueueItemEntity
+import com.example.miles.wear.data.local.entity.SavedPinEntity
+import com.example.miles.wear.data.local.entity.DayStatsEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -47,6 +49,36 @@ interface WorkoutSessionDao {
     @Query("SELECT * FROM workout_sessions WHERE id = :id")
     suspend fun getSessionById(id: Long): WorkoutSessionEntity?
 
+    @Query("SELECT * FROM workout_sessions")
+    suspend fun getAllSessionsNow(): List<WorkoutSessionEntity>
+
     @Query("DELETE FROM workout_sessions WHERE id = :id")
     suspend fun deleteSession(id: Long)
+}
+
+@Dao
+interface SavedPinDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPin(pin: SavedPinEntity): Long
+
+    @Query("SELECT * FROM saved_pins ORDER BY createdAt DESC")
+    fun getAllPins(): Flow<List<SavedPinEntity>>
+
+    @Query("SELECT * FROM saved_pins ORDER BY createdAt DESC")
+    suspend fun getAllPinsNow(): List<SavedPinEntity>
+
+    @Query("DELETE FROM saved_pins WHERE id = :id")
+    suspend fun deletePin(id: Long)
+}
+
+@Dao
+interface DayStatsDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDay(stats: DayStatsEntity)
+
+    @Query("SELECT * FROM day_stats ORDER BY dateKey")
+    suspend fun getAllDays(): List<DayStatsEntity>
+
+    @Query("SELECT * FROM day_stats WHERE dateKey = :key")
+    suspend fun getDay(key: String): DayStatsEntity?
 }

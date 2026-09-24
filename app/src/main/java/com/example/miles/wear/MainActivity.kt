@@ -43,6 +43,7 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.miles.wear.data.model.WorkoutPlan
 import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
 import com.example.miles.wear.ui.screens.CompassScreen
@@ -50,11 +51,13 @@ import com.example.miles.wear.ui.screens.DashboardScreen
 import com.example.miles.wear.ui.screens.HistoryScreen
 import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
 import com.example.miles.wear.ui.screens.MapsScreen
+import com.example.miles.wear.ui.screens.RecordsScreen
 import com.example.miles.wear.ui.screens.SensorsDiagnosticScreen
 import com.example.miles.wear.ui.screens.SettingsScreen
 import com.example.miles.wear.ui.screens.WaterLockScreen
 import com.example.miles.wear.ui.screens.WorkoutDetailScreen
 import com.example.miles.wear.ui.screens.WorkoutSelectionScreen
+import com.example.miles.wear.ui.screens.WorkoutSetupScreen
 import com.example.miles.wear.ui.screens.WorkoutSummaryScreen
 import com.example.miles.wear.ui.theme.MilesWearTheme
 import com.example.miles.wear.ui.theme.MutedGray
@@ -178,6 +181,9 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     onOpenMap = {
                         navController.navigate("map")
                     },
+                    onOpenRecords = {
+                        navController.navigate("records")
+                    },
                     onOpenCompass = {
                         navController.navigate("compass")
                     },
@@ -196,16 +202,42 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
             composable("select_workout") {
                 WorkoutSelectionScreen(
                     onSelectWorkout = { workoutType ->
-                        navController.navigate("active_workout/${workoutType.name}")
+                        navController.navigate("workout_setup/${workoutType.name}")
                     }
                 )
             }
 
-            composable("active_workout/{type}") { backStackEntry ->
+            composable("workout_setup/{type}") { backStackEntry ->
                 val typeName = backStackEntry.arguments?.getString("type") ?: WorkoutType.RUN.name
                 val type = WorkoutType.fromString(typeName)
+                WorkoutSetupScreen(
+                    workoutType = type,
+                    onStart = { plan ->
+                        navController.navigate("active_workout/${type.name}?plan=${plan.encode()}") {
+                            // Free workouts from the dashboard quick-start keep the old route
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
+            composable(
+                route = "active_workout/{type}?plan={plan}",
+                arguments = listOf(
+                    androidx.navigation.navArgument("type") { type = androidx.navigation.NavType.StringType },
+                    androidx.navigation.navArgument("plan") {
+                        type = androidx.navigation.NavType.StringType
+                        defaultValue = "free"
+                        nullable = false
+                    }
+                )
+            ) { backStackEntry ->
+                val typeName = backStackEntry.arguments?.getString("type") ?: WorkoutType.RUN.name
+                val type = WorkoutType.fromString(typeName)
+                val plan = WorkoutPlan.decode(backStackEntry.arguments?.getString("plan"))
                 ActiveWorkoutScreen(
                     workoutType = type,
+                    plan = plan,
                     onFinishWorkout = {
                         navController.navigate("workout_summary") {
                             popUpTo("dashboard")
@@ -226,6 +258,10 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
 
             composable("compass") {
                 CompassScreen()
+            }
+
+            composable("records") {
+                RecordsScreen()
             }
 
             composable("mirrored_workout") {

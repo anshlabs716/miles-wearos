@@ -20,9 +20,14 @@ import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.R
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.GpsStatus
+import com.example.miles.wear.data.model.GoalType
 import com.example.miles.wear.data.model.HeartRateZone
+import com.example.miles.wear.data.model.IntervalPhase
+import com.example.miles.wear.data.model.WorkoutMode
+import com.example.miles.wear.data.model.WorkoutPlan
 import com.example.miles.wear.data.model.WorkoutState
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.engine.WorkoutPlanHub
 import com.example.miles.wear.util.HapticHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +56,12 @@ class WorkoutTrackingService : Service() {
     private val _currentWorkoutType = MutableStateFlow(WorkoutType.RUN)
     val currentWorkoutType: StateFlow<WorkoutType> = _currentWorkoutType.asStateFlow()
 
+    // Goal / interval plan (free by default)
+    private val _currentPlan = MutableStateFlow(WorkoutPlan())
+    val currentPlan: StateFlow<WorkoutPlan> = _currentPlan.asStateFlow()
+
+    private var goalAlerted = false
+
     private var sessionStartTime = 0L
     private var elapsedSeconds = 0L
     private var lastVibratedKilometer = 0
@@ -74,12 +85,14 @@ class WorkoutTrackingService : Service() {
         const val ACTION_START_MIRRORED = "ACTION_START_MIRRORED"
 
         const val EXTRA_WORKOUT_TYPE = "EXTRA_WORKOUT_TYPE"
+        const val EXTRA_PLAN = "EXTRA_PLAN"
         private const val NOTIFICATION_ID = 1001
 
-        fun startWorkoutIntent(context: Context, type: WorkoutType): Intent {
+        fun startWorkoutIntent(context: Context, type: WorkoutType, plan: WorkoutPlan = WorkoutPlan()): Intent {
             return Intent(context, WorkoutTrackingService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_WORKOUT_TYPE, type.name)
+                putExtra(EXTRA_PLAN, plan.encode())
             }
         }
     }
@@ -90,7 +103,8 @@ class WorkoutTrackingService : Service() {
             ACTION_START -> {
                 val typeName = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: WorkoutType.RUN.name
                 val type = WorkoutType.fromString(typeName)
-                startWorkout(type, isMirrored = false)
+                val plan = WorkoutPlan.decode(intent.getStringExtra(EXTRA_PLAN))
+                startWorkout(type, isMirrored = false, plan = plan)
             }
             ACTION_START_MIRRORED -> {
                 val typeName = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: WorkoutType.RUN.name
@@ -105,8 +119,11 @@ class WorkoutTrackingService : Service() {
         return START_STICKY
     }
 
-    fun startWorkout(type: WorkoutType, isMirrored: Boolean = false) {
+    fun startWorkout(type: WorkoutType, isMirrored: Boolean = false, plan: WorkoutPlan = WorkoutPlan()) {
         _currentWorkoutType.value = type
+        _currentPlan.value = plan
+        WorkoutPlanHub.reset(0f, null)
+        goalAlerted = false
         _workoutState.value = if (isMirrored) WorkoutState.MIRRORED else WorkoutState.RUNNING
         sessionStartTime = System.currentTimeMillis()
         elapsedSeconds = 0L
@@ -196,6 +213,13 @@ class WorkoutTrackingService : Service() {
                     routeGeoJson = routeJson
                 )
                 repository.updateWorkoutSession(updated)
+                // Accumulate today's real totals (drives step/activity streaks)
+                repository.recordDayActivity(
+                    distanceMeters = finalMetrics.distanceMeters,
+                    steps = finalMetrics.steps,
+                    activeSeconds = elapsedSeconds,
+                    calories = finalMetrics.caloriesKcal
+                )
             }
         }
 
@@ -304,6 +328,9 @@ class WorkoutTrackingService : Service() {
                     vibratePattern(longArrayOf(0, 100, 80, 100))
                 }
 
+                // Goal / interval plan progress (real metric values from the tracker)
+                evaluatePlan(metrics)
+
                 // Update notification
                 val timeStr = formatDuration(elapsedSeconds)
                 val notification = buildOngoingNotification(timeStr, hr.bpm)
@@ -313,13 +340,79 @@ class WorkoutTrackingService : Service() {
         }
     }
 
+    private fun evaluatePlan(metrics: com.example.miles.wear.data.model.LiveWorkoutMetrics) {
+        val plan = _currentPlan.value
+        when (plan.mode) {
+            WorkoutMode.GOAL -> {
+                val progress = when (plan.goalType) {
+                    GoalType.DISTANCE -> if (plan.goalValue > 0) (metrics.distanceMeters / 1000.0 / plan.goalValue).toFloat() else 1f
+                    GoalType.DURATION -> if (plan.goalValue > 0) (metrics.elapsedSeconds / 60.0 / plan.goalValue).toFloat() else 1f
+                    GoalType.CALORIES -> if (plan.goalValue > 0) (metrics.caloriesKcal / plan.goalValue).toFloat() else 1f
+                }
+                WorkoutPlanHub.setGoalProgress(progress)
+                if (progress >= 1f && !goalAlerted) {
+                    goalAlerted = true
+                    vibratePattern(longArrayOf(0, 200, 120, 200, 120, 400))
+                    val goalName = plan.goalType.title
+                    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    manager.notify(
+                        NOTIFICATION_ID,
+                        buildOngoingNotification(formatDuration(elapsedSeconds), 0, note = "$goalName goal reached! 🎉")
+                    )
+                }
+            }
+
+            WorkoutMode.INTERVAL -> {
+                val phase = computeIntervalPhase(elapsedSeconds, plan)
+                if (phase != WorkoutPlanHub.intervalPhase.value) {
+                    WorkoutPlanHub.setIntervalPhase(phase)
+                    if (phase == null) {
+                        // Interval set complete
+                        vibratePattern(longArrayOf(0, 200, 120, 200, 120, 400))
+                    } else {
+                        // Phase change cue (work starts = strong, rest = light)
+                        if (phase.isWork) {
+                            vibratePattern(longArrayOf(0, 120, 80, 120))
+                        } else {
+                            vibratePattern(longArrayOf(0, 80))
+                        }
+                    }
+                }
+            }
+
+            WorkoutMode.FREE -> Unit
+        }
+    }
+
+    /** Pure interval timeline: work(i) then rest(i) for each of `reps`, then a cooldown. */
+    private fun computeIntervalPhase(elapsedSec: Long, plan: WorkoutPlan): IntervalPhase? {
+        var rem = elapsedSec
+        for (set in 1..plan.repetitions) {
+            if (rem < plan.workSeconds) {
+                return IntervalPhase(true, rem, plan.workSeconds.toLong(), set, plan.repetitions)
+            }
+            rem -= plan.workSeconds
+            if (set < plan.repetitions) {
+                if (rem < plan.recoverySeconds) {
+                    return IntervalPhase(false, rem, plan.recoverySeconds.toLong(), set, plan.repetitions)
+                }
+                rem -= plan.recoverySeconds
+            }
+        }
+        // Cooldown after the final work set
+        if (rem < plan.recoverySeconds) {
+            return IntervalPhase(false, rem, plan.recoverySeconds.toLong(), plan.repetitions, plan.repetitions, isCooldown = true)
+        }
+        return null
+    }
+
     private fun formatDuration(seconds: Long): String {
         val m = seconds / 60
         val s = seconds % 60
         return String.format("%02d:%02d", m, s)
     }
 
-    private fun buildOngoingNotification(timeStr: String, bpm: Int): Notification {
+    private fun buildOngoingNotification(timeStr: String, bpm: Int, note: String = ""): Notification {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -333,7 +426,7 @@ class WorkoutTrackingService : Service() {
 
         val builder = NotificationCompat.Builder(this, MilesWearApplication.NOTIFICATION_CHANNEL_ID)
             .setContentTitle("MILES • ${_currentWorkoutType.value.displayName}")
-            .setContentText("$timeStr • $distanceStr" + if (bpm > 0) " • $bpm BPM" else "")
+            .setContentText(if (note.isNotEmpty()) note else "$timeStr • $distanceStr" + if (bpm > 0) " • $bpm BPM" else "")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
