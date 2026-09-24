@@ -88,6 +88,10 @@ class WorkoutTrackingService : Service() {
         const val EXTRA_PLAN = "EXTRA_PLAN"
         private const val NOTIFICATION_ID = 1001
 
+        /** True while a real workout is running — suppresses move reminders. */
+        @Volatile
+        var isWorkoutActive = false
+
         fun startWorkoutIntent(context: Context, type: WorkoutType, plan: WorkoutPlan = WorkoutPlan()): Intent {
             return Intent(context, WorkoutTrackingService::class.java).apply {
                 action = ACTION_START
@@ -124,6 +128,7 @@ class WorkoutTrackingService : Service() {
         _currentPlan.value = plan
         WorkoutPlanHub.reset(0f, null)
         goalAlerted = false
+        isWorkoutActive = true
         _workoutState.value = if (isMirrored) WorkoutState.MIRRORED else WorkoutState.RUNNING
         sessionStartTime = System.currentTimeMillis()
         elapsedSeconds = 0L
@@ -184,6 +189,7 @@ class WorkoutTrackingService : Service() {
         tickerJob?.cancel()
         autoPauseJob?.cancel()
         sensorTracker.stopTracking()
+        isWorkoutActive = false
 
         // Haptic celebratory vibration (toggleable in Settings)
         if (repository.settings.value.workoutFinishHaptic) {
@@ -234,6 +240,7 @@ class WorkoutTrackingService : Service() {
         tickerJob?.cancel()
         autoPauseJob?.cancel()
         sensorTracker.stopTracking()
+        isWorkoutActive = false
 
         scope.launch {
             if (currentSessionId > 0) {
@@ -477,6 +484,7 @@ class WorkoutTrackingService : Service() {
     override fun onDestroy() {
         tickerJob?.cancel()
         sensorTracker.stopTracking()
+        isWorkoutActive = false
         super.onDestroy()
     }
 }

@@ -58,6 +58,7 @@ fun SettingsScreen(
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
+    val context = androidx.compose.ui.platform.LocalContext.current
     val repository = MilesWearApplication.instance.repository
     val settings by repository.settings.collectAsStateWithLifecycle()
     val phoneMessaging = MilesWearApplication.instance.phoneMessagingManager
@@ -818,6 +819,118 @@ fun SettingsScreen(
                             text = if (settings.batterySaverEnabled) "ON • Optimized GPS & ambient rate" else "OFF • High accuracy",
                             fontSize = 9.sp,
                             color = if (settings.batterySaverEnabled) ElectricAmber else MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Section: Move Reminders & Voice Navigation
+            item {
+                Text(
+                    text = "REMINDERS & VOICE",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ElectricAmber,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(moveReminderEnabled = !settings.moveReminderEnabled))
+                        com.example.miles.wear.engine.MoveReminderManager.applySetting(context)
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.moveReminderEnabled) Color(0xFF382010) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Move Reminders",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (settings.moveReminderEnabled) ElectricAmber else Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.moveReminderEnabled) "ON • Nags only when idle" else "OFF • No sitting-tracker",
+                            fontSize = 9.sp,
+                            color = if (settings.moveReminderEnabled) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            if (settings.moveReminderEnabled) {
+                item {
+                    Chip(
+                        onClick = {
+                            val options = listOf(30, 45, 60, 90, 120)
+                            val next = options[(options.indexOf(settings.moveReminderIntervalMin) + 1).coerceAtLeast(0) % options.size]
+                            repository.updateSettings(settings.copy(moveReminderIntervalMin = next))
+                            com.example.miles.wear.engine.MoveReminderManager.applySetting(context)
+                        },
+                        colors = ChipDefaults.chipColors(
+                            backgroundColor = Color(0xFF18181C),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 2.dp),
+                        label = {
+                            Text(
+                                text = "Interval: ${settings.moveReminderIntervalMin} min",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White
+                            )
+                        },
+                        secondaryLabel = {
+                            Text(
+                                text = "Tap to cycle 30–120 min",
+                                fontSize = 9.sp,
+                                color = MutedGray
+                            )
+                        }
+                    )
+                }
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        repository.updateSettings(settings.copy(voiceNavEnabled = !settings.voiceNavEnabled))
+                        if (settings.voiceNavEnabled) {
+                            com.example.miles.wear.engine.NavigationVoice.stopSpeaking()
+                        }
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.voiceNavEnabled) Color(0xFF182A3A) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Voice Navigation",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.voiceNavEnabled) "ON • Spoken turn cues" else "OFF • Silent nav only",
+                            fontSize = 9.sp,
+                            color = if (settings.voiceNavEnabled) VividGreen else MutedGray
                         )
                     }
                 )

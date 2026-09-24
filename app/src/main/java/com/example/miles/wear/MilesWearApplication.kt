@@ -8,6 +8,7 @@ import com.example.miles.wear.data.local.MilesDatabase
 import com.example.miles.wear.data.repository.MilesRepository
 import com.example.miles.wear.network.PhoneMessagingManager
 import com.example.miles.wear.sensor.SensorTracker
+import com.example.miles.wear.service.MoveReminderReceiver
 
 class MilesWearApplication : Application() {
 
@@ -50,6 +51,11 @@ class MilesWearApplication : Application() {
         }
 
         createNotificationChannel()
+        MoveReminderReceiver.ensureChannel(this)
+        // Re-arm move reminders if the setting is enabled (survives restarts).
+        com.example.miles.wear.engine.MoveReminderManager.applySetting(this)
+        // Hands-free nav voice ready when needed.
+        com.example.miles.wear.engine.NavigationVoice.init(this)
     }
 
     private fun createNotificationChannel() {

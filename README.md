@@ -38,6 +38,9 @@
 - Mirrored workout HUD
 - Compass and water lock
 - Sensor diagnostics
+- Export & backup (GPX, CSV, JSON) with on-device restore
+- Move reminders (sitting-streak nags, skip during workouts)
+- Voice navigation (spoken turn-by-turn cues)
 - Privacy-focused, local-first design
 
 MILES does not intentionally generate fake GPS, heart-rate, or step data.
@@ -106,9 +109,8 @@ app/build/outputs/apk/debug/app-debug.apk
 
 - More sensor support
 - Better GPS filtering and route smoothing
-- Export / backup (JSON, CSV, GPX)
-- Move reminders
-- Voice navigation
+- BLE heart-rate / cadence sensors
+- Health Connect integration
 - Continued MILES Studio development
 
 ## 📄 License

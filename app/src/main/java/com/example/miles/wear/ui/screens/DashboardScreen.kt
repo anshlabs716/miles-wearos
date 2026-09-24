@@ -78,7 +78,8 @@ fun DashboardScreen(
     onOpenRecords: () -> Unit = {},
     onOpenPet: () -> Unit = {},
     onOpenRoutes: () -> Unit = {},
-    onOpenTraining: () -> Unit = {}
+    onOpenTraining: () -> Unit = {},
+    onOpenExport: () -> Unit = {}
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -793,6 +794,39 @@ fun DashboardScreen(
                     secondaryLabel = {
                         Text(
                             text = "Units, Sensors & Privacy",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Export & Backup
+            item {
+                Chip(
+                    onClick = onOpenExport,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF15201A),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "💾", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Export & Backup",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "GPX • CSV • JSON • Full backup",
                             fontSize = 9.sp,
                             color = MutedGray
                         )
