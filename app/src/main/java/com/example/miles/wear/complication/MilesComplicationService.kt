@@ -12,21 +12,22 @@ import com.example.miles.wear.MilesWearApplication
 class MilesComplicationService : ComplicationDataSourceService() {
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
+        // Real data only: the system preview never shows fake readings.
         return when (type) {
             ComplicationType.RANGED_VALUE -> {
                 RangedValueComplicationData.Builder(
-                    value = 75f,
-                    min = 40f,
-                    max = 190f,
-                    contentDescription = PlainComplicationText.Builder("75 BPM").build()
-                ).setText(PlainComplicationText.Builder("75").build())
+                    value = 0f,
+                    min = 0f,
+                    max = 1f,
+                    contentDescription = PlainComplicationText.Builder("-- BPM").build()
+                ).setText(PlainComplicationText.Builder("--").build())
                  .setTitle(PlainComplicationText.Builder("BPM").build())
                  .build()
             }
             ComplicationType.SHORT_TEXT -> {
                 ShortTextComplicationData.Builder(
-                    text = PlainComplicationText.Builder("240").build(),
-                    contentDescription = PlainComplicationText.Builder("240 kcal").build()
+                    text = PlainComplicationText.Builder("--").build(),
+                    contentDescription = PlainComplicationText.Builder("-- kcal").build()
                 ).setTitle(PlainComplicationText.Builder("kcal").build())
                  .build()
             }
@@ -60,7 +61,7 @@ class MilesComplicationService : ComplicationDataSourceService() {
             }
             ComplicationType.SHORT_TEXT -> {
                 ShortTextComplicationData.Builder(
-                    text = PlainComplicationText.Builder((cal ?: 0).toString()).build(),
+                    text = PlainComplicationText.Builder((cal?.toString() ?: "--")).build(),
                     contentDescription = PlainComplicationText.Builder("${cal ?: "--"} kcal").build()
                 ).setTitle(PlainComplicationText.Builder("kcal").build())
                  .build()
