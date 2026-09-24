@@ -1,7 +1,9 @@
 package com.example.miles.wear
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material3.Text
@@ -43,8 +46,10 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.miles.wear.data.imports.WorkoutImporter
 import com.example.miles.wear.data.model.WorkoutPlan
 import com.example.miles.wear.data.model.WorkoutType
+import kotlinx.coroutines.launch
 import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
 import com.example.miles.wear.ui.screens.CompassScreen
 import com.example.miles.wear.ui.screens.DashboardScreen
@@ -78,11 +83,31 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val navToMirrored = intent.getBooleanExtra("NAV_TO_MIRRORED", false)
+        handleImportIntent(intent)
 
         setContent {
             MilesWearTheme {
                 MilesAppContent(initialNavToMirrored = navToMirrored)
             }
+        }
+    }
+
+    /** Accepts "Share to MILES" / "Open with MILES" GPX, JSON, or backup files. */
+    private fun handleImportIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
+        val uri = intent.data ?: intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: return
+        val name = intent.clipData?.let { cd ->
+            (0 until cd.itemCount).firstNotNullOfOrNull { i -> cd.getItemAt(i).uri?.lastPathSegment }
+        } ?: uri.lastPathSegment ?: "import.json"
+        lifecycleScope.launch {
+            val res = WorkoutImporter.importUri(
+                applicationContext,
+                MilesWearApplication.instance.repository,
+                uri,
+                name
+            )
+            android.widget.Toast.makeText(this@MainActivity, res.uiText(), android.widget.Toast.LENGTH_LONG).show()
         }
     }
 }

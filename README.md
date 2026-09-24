@@ -39,6 +39,8 @@
 - Compass and water lock
 - Sensor diagnostics
 - Export & backup (GPX, CSV, JSON) with on-device restore
+- Import workouts + backups from any app (GPX, JSON, share-to-MILES)
+- Street + satellite map on every workout (OSM & Esri tiles)
 - Move reminders (sitting-streak nags, skip during workouts)
 - Voice navigation (spoken turn-by-turn cues)
 - Automatic km/mi splits with real pace
