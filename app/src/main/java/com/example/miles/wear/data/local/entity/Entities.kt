@@ -62,3 +62,25 @@ data class PetEntity(
     val petType: String = "DOG",
     val petName: String = "Miles"
 )
+
+/** A route saved by the user (from navigation or pins) — real points only. */
+@Entity(tableName = "saved_routes")
+data class SavedRouteEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,
+    val pointsJson: String,        // JSON array of GpsPoint
+    val distanceMeters: Double = 0.0,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** Single-row progress for the active progressive training plan. */
+@Entity(tableName = "training_progress")
+data class TrainingProgressEntity(
+    @PrimaryKey
+    val id: Int = 1,
+    val planKey: String = "",
+    val startedEpochDay: Long = 0,
+    val completedJson: String = "",      // ["w1d1","w3d2",...]
+    val finishedAtEpochDay: Long = 0
+)

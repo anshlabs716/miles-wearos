@@ -220,6 +220,8 @@ class WorkoutTrackingService : Service() {
                     activeSeconds = elapsedSeconds,
                     calories = finalMetrics.caloriesKcal
                 )
+                // A training-plan workout launched the session: mark that day ✓
+                repository.completePendingTrainingDayIfAny()
             }
         }
 

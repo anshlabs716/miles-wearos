@@ -152,7 +152,7 @@ private val mapLayers = listOf(
 )
 
 @Composable
-fun MapsScreen() {
+fun MapsScreen(followRouteId: Long? = null) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -176,6 +176,11 @@ fun MapsScreen() {
     var searching by remember { mutableStateOf(false) }
     var selectedPlace by remember { mutableStateOf<SearchResult?>(null) }
     var selectedPin by remember { mutableStateOf<SavedPinEntity?>(null) }
+
+    // Route builder (from pins) + save feedback
+    var builtRoute by remember { mutableStateOf<List<GpsPoint>?>(null) }
+    var savedFlash by remember { mutableStateOf<String?>(null) }
+    var followHandled by remember { mutableStateOf(false) }
 
     val layer = mapLayers[layerIndex]
     val buttonSize = if (compact) 38.dp else 44.dp
@@ -242,6 +247,24 @@ fun MapsScreen() {
         mapView.invalidate()
     }
 
+    // Load + follow a saved route passed from the Routes screen (real points).
+    LaunchedEffect(followRouteId, followHandled) {
+        val id = followRouteId
+        if (id != null && !followHandled) {
+            followHandled = true
+            coroutineScope.launch {
+                val route = repository.getRouteById(id)
+                if (route != null) {
+                    val pts = repository.routePoints(route)
+                    if (pts.size >= 2) {
+                        WearRoutingEngine.followRoute(context, pts, route.name)
+                        savedFlash = "Following ${route.name}"
+                    }
+                }
+            }
+        }
+    }
+
     DisposableEffect(mapView) {
         var locationOverlay: MyLocationNewOverlay? = null
 
@@ -274,8 +297,8 @@ fun MapsScreen() {
         }
     }
 
-    // Redraw pins + nav route as overlays when they change
-    LaunchedEffect(pins, navRoute, selectedPlace) {
+    // Redraw pins + nav route + built route as overlays when they change
+    LaunchedEffect(pins, navRoute, selectedPlace, builtRoute) {
         mapView.overlays.filterIsInstance<Marker>().forEach { mapView.overlays.remove(it) }
         mapView.overlays.filterIsInstance<Polyline>().forEach { mapView.overlays.remove(it) }
 
@@ -290,6 +313,28 @@ fun MapsScreen() {
                 try {
                     mapView.zoomToBoundingBox(line.bounds, true, 40)
                 } catch (_: Exception) {
+                }
+            }
+        }
+
+        builtRoute?.let { pts ->
+            if (pts.size >= 2) {
+                val line = Polyline(mapView).apply {
+                    setPoints(pts.map { GeoPoint(it.lat, it.lon) })
+                    outlinePaint.color = 0xFFFF9100.toInt()
+                    outlinePaint.strokeWidth = 16f
+                }
+                mapView.overlays.add(line)
+                try {
+                    mapView.zoomToBoundingBox(line.bounds, true, 40)
+                } catch (_: Exception) {
+                }
+                pts.forEach { p ->
+                    Marker(mapView).apply {
+                        position = GeoPoint(p.lat, p.lon)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        title = "Route point"
+                    }.let { mapView.overlays.add(it) }
                 }
             }
         }
@@ -558,34 +603,139 @@ fun MapsScreen() {
                 Text("Search")
             }
 
-            Button(
-                onClick = {
-                    val center = mapView.mapCenter
-                    coroutineScope.launch {
-                        repository.addPin("Pin #${pins.size + 1}", center.latitude, center.longitude)
-                    }
-                    vibrate(context, 50L)
-                },
-                modifier = Modifier
-                    .size(width = 78.dp, height = 38.dp)
-                    .background(androidx.compose.ui.graphics.Color.Transparent)
-            ) {
-                Icon(Icons.Default.Place, contentDescription = "Drop pin at center")
-                Text("Pin")
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(
+                    onClick = {
+                        val center = mapView.mapCenter
+                        coroutineScope.launch {
+                            repository.addPin("Pin #${pins.size + 1}", center.latitude, center.longitude)
+                        }
+                        vibrate(context, 50L)
+                    },
+                    modifier = Modifier
+                        .size(width = 72.dp, height = 38.dp)
+                        .background(androidx.compose.ui.graphics.Color.Transparent)
+                ) {
+                    Icon(Icons.Default.Place, contentDescription = "Drop pin at center")
+                    Text("Pin")
+                }
+
+                Button(
+                    onClick = {
+                        val ordered = pins.asReversed()
+                        if (ordered.size < 2) {
+                            vibrate(context, longArrayOf(0, 120, 80, 120))
+                            savedFlash = "Need 2+ pins"
+                            return@Button
+                        }
+                        coroutineScope.launch {
+                            val pts = ordered.map { GpsPoint(it.latitude, it.longitude, 0.0, 0.0, it.createdAt) }
+                            builtRoute = pts
+                            savedFlash = "Route from ${pts.size} pins"
+                        }
+                        vibrate(context, 50L)
+                    },
+                    modifier = Modifier
+                        .size(width = 72.dp, height = 38.dp)
+                        .background(androidx.compose.ui.graphics.Color.Transparent)
+                ) {
+                    Text("🧩", fontSize = 12.sp)
+                    Text("Route")
+                }
             }
 
             if (navState != null) {
-                Button(
-                    onClick = {
-                        WearRoutingEngine.stop()
-                        selectedPlace = null
-                        selectedPin = null
-                    },
-                    modifier = Modifier.size(width = 78.dp, height = 38.dp)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Stop navigation")
-                    Text("Stop")
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Button(
+                        onClick = {
+                            val pts = WearRoutingEngine.route.value
+                            val total = WearRoutingEngine.currentTotalMeters
+                            if (pts != null && pts.size >= 2 && total > 0.0) {
+                                coroutineScope.launch {
+                                    repository.saveRoute(
+                                        name = "Route ${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date())}",
+                                        points = pts,
+                                        distanceMeters = total
+                                    )
+                                }
+                                savedFlash = "Route saved ✓"
+                                vibrate(context, longArrayOf(0, 80, 60, 120))
+                            }
+                        },
+                        modifier = Modifier.size(width = 72.dp, height = 38.dp)
+                    ) {
+                        Text("Save")
+                    }
+                    Button(
+                        onClick = {
+                            WearRoutingEngine.stop()
+                            selectedPlace = null
+                            selectedPin = null
+                        },
+                        modifier = Modifier.size(width = 72.dp, height = 38.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Stop navigation")
+                        Text("Stop")
+                    }
                 }
+            }
+        }
+
+        // Route builder card (from pins)
+        builtRoute?.let { pts ->
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 8.dp, bottom = 94.dp)
+                    .background(androidx.compose.ui.graphics.Color(0xF0181F18), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "🧩 Route: ${pts.size} pins • ${"%.2f".format(routeMeters(pts) / 1000.0)} km",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = ElectricAmber
+                )
+                Spacer(modifier = Modifier.size(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Button(
+                        onClick = {
+                            if (pts.size >= 2) {
+                                coroutineScope.launch {
+                                    repository.saveRoute(
+                                        name = "Route ${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date())}",
+                                        points = pts,
+                                        distanceMeters = routeMeters(pts)
+                                    )
+                                }
+                                builtRoute = null
+                                savedFlash = "Route saved ✓"
+                            }
+                        },
+                        modifier = Modifier.size(width = 76.dp, height = 34.dp)
+                    ) { Text("Save") }
+                    Button(
+                        onClick = { builtRoute = null },
+                        modifier = Modifier.size(width = 76.dp, height = 34.dp)
+                    ) { Text("Clear") }
+                }
+            }
+        }
+
+        // Small flash feedback (saved / hints)
+        savedFlash?.let { flash ->
+            Text(
+                text = flash,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = VividGreen,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).navigationBarsPadding()
+            )
+            LaunchedEffect(flash) {
+                kotlinx.coroutines.delay(1800L)
+                savedFlash = null
             }
         }
 
@@ -704,6 +854,25 @@ private fun SearchOverlay(
 private fun shortPlaceName(displayName: String): String {
     val parts = displayName.split(", ")
     return if (parts.size >= 2) "${parts[0]}, ${parts[1]}" else displayName
+}
+
+/** Approximate polyline length in meters (haversine per segment). */
+private fun routeMeters(points: List<GpsPoint>): Double {
+    var total = 0.0
+    for (i in 0 until points.size - 1) {
+        total += haversineMeters(points[i], points[i + 1])
+    }
+    return total
+}
+
+private fun haversineMeters(a: GpsPoint, b: GpsPoint): Double {
+    val earthR = 6371000.0
+    val dLat = Math.toRadians(b.lat - a.lat)
+    val dLon = Math.toRadians(b.lon - a.lon)
+    val h = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+        kotlin.math.cos(Math.toRadians(a.lat)) * kotlin.math.cos(Math.toRadians(b.lat)) *
+        kotlin.math.sin(dLon / 2) * kotlin.math.sin(dLon / 2)
+    return 2 * earthR * kotlin.math.atan2(kotlin.math.sqrt(h), kotlin.math.sqrt(1 - h))
 }
 
 private fun vibrate(context: Context, milliseconds: Long) {

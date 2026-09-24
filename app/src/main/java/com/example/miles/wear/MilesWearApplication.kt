@@ -40,7 +40,9 @@ class MilesWearApplication : Application() {
             database.workoutSessionDao(),
             database.savedPinDao(),
             database.dayStatsDao(),
-            database.petDao()
+            database.petDao(),
+            database.savedRouteDao(),
+            database.trainingProgressDao()
         )
         sensorTracker = SensorTracker(this)
         phoneMessagingManager = PhoneMessagingManager(this, repository).apply {
