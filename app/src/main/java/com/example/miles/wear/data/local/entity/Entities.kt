@@ -53,3 +53,12 @@ data class DayStatsEntity(
     val activeSeconds: Long = 0L,
     val calories: Int = 0
 )
+
+/** The user's adopted fitness companion (single row). */
+@Entity(tableName = "pet")
+data class PetEntity(
+    @PrimaryKey
+    val id: Long = 1,
+    val petType: String = "DOG",
+    val petName: String = "Miles"
+)

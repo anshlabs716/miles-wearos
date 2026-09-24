@@ -85,6 +85,7 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     private var initialStepCount = -1
     private var workoutSteps = 0
     private var currentDailySteps = 0
+    private var stepBaseline = -1
     private var initialAltitude = 0.0
     private var currentAltitude = 0.0
     private var maxAltitude = 0.0
@@ -284,7 +285,26 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
             }
             Sensor.TYPE_STEP_COUNTER -> {
                 val totalDeviceSteps = event.values.getOrNull(0)?.toInt() ?: 0
-                currentDailySteps = totalDeviceSteps
+                // TYPE_STEP_COUNTER reports steps since the device last rebooted,
+                // NOT today's steps. Convert to a real "today" count using a
+                // persisted midnight baseline — never show the cumulative total.
+                val today = todayKey()
+                val prefs = settingsPrefs()
+                val savedDate = prefs.getString("step_baseline_date", null)
+                val savedBaseline = prefs.getInt("step_baseline", -1)
+                val newDay = savedDate != today
+                val counterReset = totalDeviceSteps < savedBaseline
+                if (newDay || savedBaseline < 0 || counterReset) {
+                    prefs.edit()
+                        .putString("step_baseline_date", today)
+                        .putInt("step_baseline", totalDeviceSteps)
+                        .apply()
+                    stepBaseline = totalDeviceSteps
+                    currentDailySteps = 0
+                } else {
+                    stepBaseline = savedBaseline
+                    currentDailySteps = totalDeviceSteps - stepBaseline
+                }
 
                 if (isTracking) {
                     if (initialStepCount < 0) {
@@ -338,6 +358,10 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
         val now = System.currentTimeMillis()
         stepTimestamps.add(now)
         pruneStepWindow(now)
+    }
+
+    private fun todayKey(): String {
+        return java.time.LocalDate.now().toString() // yyyy-MM-dd
     }
 
     private fun pruneStepWindow(now: Long) {

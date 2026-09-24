@@ -51,6 +51,7 @@ import com.example.miles.wear.ui.screens.DashboardScreen
 import com.example.miles.wear.ui.screens.HistoryScreen
 import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
 import com.example.miles.wear.ui.screens.MapsScreen
+import com.example.miles.wear.ui.screens.PetScreen
 import com.example.miles.wear.ui.screens.RecordsScreen
 import com.example.miles.wear.ui.screens.SensorsDiagnosticScreen
 import com.example.miles.wear.ui.screens.SettingsScreen
@@ -184,6 +185,9 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     onOpenRecords = {
                         navController.navigate("records")
                     },
+                    onOpenPet = {
+                        navController.navigate("pet")
+                    },
                     onOpenCompass = {
                         navController.navigate("compass")
                     },
@@ -262,6 +266,12 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
 
             composable("records") {
                 RecordsScreen()
+            }
+
+            composable("pet") {
+                PetScreen(
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             composable("mirrored_workout") {

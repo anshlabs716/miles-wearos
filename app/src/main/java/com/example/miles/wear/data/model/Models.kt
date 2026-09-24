@@ -141,7 +141,12 @@ data class WearSettings(
     val workoutFinishHaptic: Boolean = true,
     val splitHaptic: Boolean = true,
     val highContrastText: Boolean = false,
-    val stepGoal: Int = 10000
+    val stepGoal: Int = 10000,
+    // Weekly goals (0 = off)
+    val weeklyDistanceKm: Double = 0.0,
+    val weeklyActiveMinutes: Int = 0,
+    // Fitness pet
+    val lazyDaysPerWeek: Int = 2
 )
 
 enum class HeartRateZone(
@@ -214,6 +219,45 @@ data class PhoneConnectionStatus(
     val phoneNodeName: String = "",
     val phoneNodeId: String = "",
     val pendingQueueCount: Int = 0
+)
+
+/** Adoptable fitness companions (fed by real steps, like MILES phone). */
+enum class PetType(val emoji: String, val label: String, val treatName: String) {
+    DOG("🐶", "Dog", "Biscuit"),
+    CAT("🐱", "Cat", "Fish"),
+    PARROT("🦜", "Parrot", "Seed"),
+    BUNNY("🐰", "Bunny", "Carrot");
+
+    companion object {
+        fun fromName(name: String?): PetType =
+            try { valueOf(name ?: "") } catch (_: Exception) { DOG }
+    }
+}
+
+/** Persisted pet companion (single row in Room). */
+data class PetEntity(
+    val id: Long = 1,
+    val petType: PetType = PetType.DOG,
+    val petName: String = "Miles"
+)
+
+/** Real weekly progress toward the user's goals. */
+data class WeeklyProgress(
+    val distanceKm: Double = 0.0,
+    val activeMinutes: Int = 0,
+    val distanceGoalKm: Double = 0.0,
+    val minutesGoal: Int = 0,
+    val weekLabel: String = ""
+)
+
+/** A badge earned from real workout history (computed, never faked). */
+data class AchievementBadge(
+    val key: String,
+    val emoji: String,
+    val title: String,
+    val description: String,
+    val unlocked: Boolean,
+    val progress: String
 )
 
 /** How a workout is structured. */

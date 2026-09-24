@@ -48,8 +48,11 @@ import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.R
+import com.example.miles.wear.data.local.entity.PetEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.GpsStatus
+import com.example.miles.wear.data.model.PetType
+import com.example.miles.wear.data.model.WeeklyProgress
 import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.engine.WearWeather
 import com.example.miles.wear.engine.WearWeatherFetcher
@@ -72,7 +75,8 @@ fun DashboardScreen(
     onStartQuickWorkout: (WorkoutType) -> Unit,
     onOpenMirrored: () -> Unit,
     onSelectSession: (Long) -> Unit,
-    onOpenRecords: () -> Unit = {}
+    onOpenRecords: () -> Unit = {},
+    onOpenPet: () -> Unit = {}
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -99,6 +103,14 @@ fun DashboardScreen(
     var weatherRefreshing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         weather = WearWeatherFetcher.fetch(context)
+    }
+
+    // Fitness pet + weekly goals (real data, refreshed on load)
+    var pet by remember { mutableStateOf<PetEntity?>(null) }
+    var weekly by remember { mutableStateOf<WeeklyProgress?>(null) }
+    LaunchedEffect(Unit) {
+        pet = repository.getPet()
+        weekly = repository.computeWeeklyProgress()
     }
 
     LaunchedEffect(Unit) {
@@ -403,6 +415,86 @@ fun DashboardScreen(
                                 "Wind ${w.windSpeedKmh?.toInt() ?: "--"} km/h"
                             } else {
                                 "Offline — tap to retry"
+                            },
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Fitness Pet (real steps feed it; tap to open pet screen)
+            item {
+                val p = pet
+                val petEmoji = p?.let { PetType.fromName(it.petType).emoji } ?: "🐕"
+                val petName = p?.petName ?: "Adopt a Pet"
+                val current = pet
+                Chip(
+                    onClick = onOpenPet,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (current == null) Color(0xFF2A1F00) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = petEmoji, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = petName,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (current == null) ElectricAmber else Color.White
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (current == null) "Feed it with real steps" else "Fed by real steps · tap to visit",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Weekly Goals (real distance + active time for this week)
+            item {
+                val w = weekly
+                val hasGoals = (w?.distanceGoalKm ?: 0.0) > 0 || (w?.minutesGoal ?: 0) > 0
+                Chip(
+                    onClick = onOpenRecords,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🏆", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (hasGoals && w != null) "Week ${w.weekLabel}" else "Weekly Goals",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (hasGoals) NeonCyan else MutedGray
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (hasGoals && w != null) {
+                                buildString {
+                                    if (w.distanceGoalKm > 0) append("${formatKm(w.distanceKm)}/${formatKm(w.distanceGoalKm)} km")
+                                    if (w.distanceGoalKm > 0 && w.minutesGoal > 0) append(" · ")
+                                    if (w.minutesGoal > 0) append("${w.activeMinutes}/${w.minutesGoal} min")
+                                }
+                            } else {
+                                "Set goals in Records"
                             },
                             fontSize = 9.sp,
                             color = MutedGray
@@ -848,3 +940,6 @@ private fun QuickStartChip(
         }
     )
 }
+
+private fun formatKm(km: Double): String =
+    if (km == km.toLong().toDouble()) km.toLong().toString() else String.format("%.1f", km)

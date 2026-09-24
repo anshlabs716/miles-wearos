@@ -1,9 +1,11 @@
 package com.example.miles.wear.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,13 +24,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.PositionIndicator
@@ -36,7 +43,9 @@ import androidx.wear.compose.material.ScalingLazyColumn
 import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
+import com.example.miles.wear.data.model.AchievementBadge
 import com.example.miles.wear.data.model.RecordsSummary
+import com.example.miles.wear.data.model.WeeklyProgress
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
@@ -45,9 +54,12 @@ import com.example.miles.wear.ui.theme.OLEDBlack
 import com.example.miles.wear.ui.theme.VividGreen
 import kotlinx.coroutines.launch
 
+private val KM_GOALS = listOf(0.0, 5.0, 10.0, 15.0, 25.0, 50.0)
+private val MIN_GOALS = listOf(0, 60, 120, 180, 300, 420)
+
 /**
- * Streaks + personal records, all computed from real saved workout history
- * and daily stats. Nothing hardcoded.
+ * Streaks, personal records, weekly goals and achievement badges — all
+ * computed from real saved workout history and daily stats. Nothing hardcoded.
  */
 @Composable
 fun RecordsScreen() {
@@ -57,10 +69,15 @@ fun RecordsScreen() {
     val repository = MilesWearApplication.instance.repository
 
     var records by remember { mutableStateOf<RecordsSummary?>(null) }
+    var weekly by remember { mutableStateOf<WeeklyProgress?>(null) }
+    var badges by remember { mutableStateOf<List<AchievementBadge>>(emptyList()) }
+    val settings by repository.settings.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         records = repository.computeRecords()
+        weekly = repository.computeWeeklyProgress()
+        badges = repository.computeBadges()
     }
 
     Scaffold(
@@ -100,6 +117,85 @@ fun RecordsScreen() {
                 }
             }
 
+            // ----- Weekly goals (real data, tap chips to change goal) -----
+            val w = weekly
+            if (w != null) {
+                item { SectionHeader("🎯 WEEKLY GOALS • ${w.weekLabel}") }
+
+                // Distance goal editor + progress
+                item {
+                    GoalEditorRow(
+                        label = "Distance goal",
+                        valueLabel = goalKmLabel(settings.weeklyDistanceKm)
+                    ) {
+                        val next = KM_GOALS[(KM_GOALS.indexOf(settings.weeklyDistanceKm) + 1) % KM_GOALS.size]
+                        repository.updateSettings(settings.copy(weeklyDistanceKm = next))
+                    }
+                }
+                if (settings.weeklyDistanceKm > 0) {
+                    item {
+                        ProgressRow(
+                            label = "Distance",
+                            value = "${formatKm(w.distanceKm)} / ${formatKm(w.distanceGoalKm)} km",
+                            fraction = (w.distanceKm / w.distanceGoalKm).toFloat().coerceIn(0f, 1f)
+                        )
+                    }
+                }
+                // Active time goal editor + progress
+                item {
+                    GoalEditorRow(
+                        label = "Time goal",
+                        valueLabel = goalMinLabel(settings.weeklyActiveMinutes)
+                    ) {
+                        val next = MIN_GOALS[(MIN_GOALS.indexOf(settings.weeklyActiveMinutes) + 1) % MIN_GOALS.size]
+                        repository.updateSettings(settings.copy(weeklyActiveMinutes = next))
+                    }
+                }
+                if (settings.weeklyActiveMinutes > 0) {
+                    item {
+                        ProgressRow(
+                            label = "Active time",
+                            value = "${w.activeMinutes} / ${settings.weeklyActiveMinutes} min",
+                            fraction = (w.activeMinutes.toFloat() / settings.weeklyActiveMinutes).coerceIn(0f, 1f)
+                        )
+                    }
+                }
+                if (settings.weeklyDistanceKm == 0.0 && settings.weeklyActiveMinutes == 0) {
+                    item {
+                        Text(
+                            text = "Tap a goal above to set it (0 = off)",
+                            fontSize = 9.sp,
+                            color = MutedGray,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(0.92f).padding(vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            // ----- Achievement badges (computed from real data) -----
+            if (badges.isNotEmpty()) {
+                item { SectionHeader("🏅 BADGES") }
+                badges.chunked(2).forEach { pair ->
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(0.94f).padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            pair.forEach { badge ->
+                                BadgeTile(
+                                    badge = badge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+
             val r = records
             if (r != null) {
                 item { SectionHeader("STREAKS") }
@@ -133,6 +229,85 @@ fun RecordsScreen() {
                 Spacer(modifier = Modifier.height(22.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun GoalEditorRow(label: String, valueLabel: String, onTap: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth(0.92f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF14161C))
+            .clickable { onTap() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
+        Text(text = valueLabel, fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun ProgressRow(label: String, value: String, fraction: Float) {
+    Column(modifier = Modifier.fillMaxWidth(0.92f).padding(vertical = 2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = label, fontSize = 9.sp, color = MutedGray)
+            Text(text = value, fontSize = 9.sp, color = VividGreen, fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF222834))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(VividGreen)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BadgeTile(badge: AchievementBadge, modifier: Modifier = Modifier) {
+    val dim = !badge.unlocked
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (dim) Color(0xFF131418) else Color(0xFF1A2416))
+            .padding(vertical = 6.dp, horizontal = 4.dp)
+    ) {
+        Text(
+            text = badge.emoji,
+            fontSize = 20.sp,
+            modifier = Modifier.alpha(if (dim) 0.35f else 1f)
+        )
+        Text(
+            text = badge.title,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (dim) MutedGray else Color.White,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = if (dim) badge.progress else "EARNED ✓",
+            fontSize = 7.sp,
+            color = if (dim) MutedGray else VividGreen,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -185,3 +360,14 @@ private fun formatPace(secondsPerKm: Double): String {
 
 private fun formatNum(value: Double): String =
     if (value == value.toLong().toDouble()) value.toLong().toString() else String.format("%.1f", value)
+
+private fun formatKm(km: Double): String =
+    if (km == km.toLong().toDouble()) km.toLong().toString() else String.format("%.1f", km)
+
+private fun goalKmLabel(km: Double): String = if (km <= 0) "OFF" else "${formatKm(km)} km"
+
+private fun goalMinLabel(min: Int): String = when {
+    min <= 0 -> "OFF"
+    min % 60 == 0 -> "${min / 60}h"
+    else -> "$min min"
+}

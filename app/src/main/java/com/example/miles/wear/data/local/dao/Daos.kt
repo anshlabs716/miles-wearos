@@ -8,6 +8,7 @@ import androidx.room.Update
 import com.example.miles.wear.data.local.entity.QueueItemEntity
 import com.example.miles.wear.data.local.entity.SavedPinEntity
 import com.example.miles.wear.data.local.entity.DayStatsEntity
+import com.example.miles.wear.data.local.entity.PetEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -81,4 +82,13 @@ interface DayStatsDao {
 
     @Query("SELECT * FROM day_stats WHERE dateKey = :key")
     suspend fun getDay(key: String): DayStatsEntity?
+}
+
+@Dao
+interface PetDao {
+    @Query("SELECT * FROM pet LIMIT 1")
+    suspend fun getPet(): PetEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun savePet(pet: PetEntity)
 }

@@ -2,20 +2,25 @@ package com.example.miles.wear.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.example.miles.wear.data.local.dao.QueueDao
-import com.example.miles.wear.data.local.dao.WorkoutSessionDao
-import com.example.miles.wear.data.local.dao.SavedPinDao
 import com.example.miles.wear.data.local.dao.DayStatsDao
+import com.example.miles.wear.data.local.dao.PetDao
+import com.example.miles.wear.data.local.dao.QueueDao
+import com.example.miles.wear.data.local.dao.SavedPinDao
+import com.example.miles.wear.data.local.dao.WorkoutSessionDao
+import com.example.miles.wear.data.local.entity.DayStatsEntity
+import com.example.miles.wear.data.local.entity.PetEntity
 import com.example.miles.wear.data.local.entity.QueueItemEntity
 import com.example.miles.wear.data.local.entity.SavedPinEntity
-import com.example.miles.wear.data.local.entity.DayStatsEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
+import com.example.miles.wear.data.model.AchievementBadge
 import com.example.miles.wear.data.model.DistanceUnit
 import com.example.miles.wear.data.model.HudLayoutMode
+import com.example.miles.wear.data.model.PetType
 import com.example.miles.wear.data.model.PrimaryMetricType
 import com.example.miles.wear.data.model.RecordsSummary
 import com.example.miles.wear.data.model.ThemeAccent
 import com.example.miles.wear.data.model.WearSettings
+import com.example.miles.wear.data.model.WeeklyProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +33,8 @@ class MilesRepository(
     private val queueDao: QueueDao,
     private val sessionDao: WorkoutSessionDao,
     private val pinDao: SavedPinDao,
-    private val dayStatsDao: DayStatsDao
+    private val dayStatsDao: DayStatsDao,
+    private val petDao: PetDao
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("miles_wear_prefs", Context.MODE_PRIVATE)
 
@@ -67,6 +73,9 @@ class MilesRepository(
         val splitHaptic = prefs.getBoolean("split_haptic", true)
         val highContrastText = prefs.getBoolean("high_contrast_text", false)
         val stepGoal = prefs.getInt("step_goal", 10000)
+        val weeklyDistanceKm = prefs.getFloat("weekly_distance_km", 0f).toDouble()
+        val weeklyActiveMinutes = prefs.getInt("weekly_active_minutes", 0)
+        val lazyDaysPerWeek = prefs.getInt("lazy_days_per_week", 2)
 
         return WearSettings(
             unit = unit,
@@ -92,7 +101,10 @@ class MilesRepository(
             workoutFinishHaptic = workoutFinishHaptic,
             splitHaptic = splitHaptic,
             highContrastText = highContrastText,
-            stepGoal = stepGoal
+            stepGoal = stepGoal,
+            weeklyDistanceKm = weeklyDistanceKm,
+            weeklyActiveMinutes = weeklyActiveMinutes,
+            lazyDaysPerWeek = lazyDaysPerWeek
         )
     }
 
@@ -123,6 +135,9 @@ class MilesRepository(
             .putBoolean("split_haptic", newSettings.splitHaptic)
             .putBoolean("high_contrast_text", newSettings.highContrastText)
             .putInt("step_goal", newSettings.stepGoal)
+            .putFloat("weekly_distance_km", newSettings.weeklyDistanceKm.toFloat())
+            .putInt("weekly_active_minutes", newSettings.weeklyActiveMinutes)
+            .putInt("lazy_days_per_week", newSettings.lazyDaysPerWeek)
             .apply()
     }
 
@@ -297,5 +312,124 @@ class MilesRepository(
         withContext(Dispatchers.IO) {
             sessionDao.deleteSession(id)
         }
+    }
+
+    // ----- Fitness pet (fed by real steps) -----
+    suspend fun getPet(): PetEntity? = withContext(Dispatchers.IO) {
+        petDao.getPet()
+    }
+
+    suspend fun savePet(petType: PetType, petName: String) {
+        withContext(Dispatchers.IO) {
+            petDao.savePet(PetEntity(petType = petType.name, petName = petName))
+        }
+    }
+
+    /** Days where the step goal was really hit — these feed the pet. */
+    suspend fun treatsFed(): Int = withContext(Dispatchers.IO) {
+        val goal = _settings.value.stepGoal
+        dayStatsDao.getAllDays().count { it.steps >= goal }
+    }
+
+    /** Real distance + active minutes for the current ISO week (Mon–Sun). */
+    suspend fun computeWeeklyProgress(): WeeklyProgress = withContext(Dispatchers.IO) {
+        val today = java.time.LocalDate.now()
+        val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
+        val sunday = monday.plusDays(6)
+        val s = _settings.value
+        val days = dayStatsDao.getAllDays()
+            .filter { day ->
+                localDateToEpochDay(day.dateKey)?.let { it in monday.toEpochDay()..sunday.toEpochDay() } == true
+            }
+        WeeklyProgress(
+            distanceKm = days.sumOf { it.distanceMeters } / 1000.0,
+            activeMinutes = (days.sumOf { it.activeSeconds } / 60L).toInt(),
+            distanceGoalKm = s.weeklyDistanceKm,
+            minutesGoal = s.weeklyActiveMinutes,
+            weekLabel = "${monday.monthValue}/${monday.dayOfMonth} – ${sunday.monthValue}/${sunday.dayOfMonth}"
+        )
+    }
+
+    /** Badges computed from real history — locked badges show honest progress. */
+    suspend fun computeBadges(): List<AchievementBadge> = withContext(Dispatchers.IO) {
+        val sessions = sessionDao.getAllSessionsNow()
+        val days = dayStatsDao.getAllDays()
+        val byDay = sessions.groupBy { dateKey(it.startTime) }
+        val workDays = byDay.filterValues { it.isNotEmpty() }.keys
+
+        val totalWorkouts = sessions.size
+        val totalDistance = sessions.sumOf { it.distanceMeters }
+        val longestDist = sessions.maxOfOrNull { it.distanceMeters } ?: 0.0
+        val maxElev = sessions.maxOfOrNull { it.elevationGainMeters } ?: 0.0
+        val totalSeconds = sessions.sumOf { it.durationSeconds }
+        val streak = countStreak(workDays)
+        val petPen = petDao.getPet()
+        val treats = if (petPen != null) dayStatsDao.getAllDays().count { it.steps >= _settings.value.stepGoal } else 0
+
+        fun km(m: Double) = String.format(java.util.Locale.US, "%.1f", m / 1000.0)
+        fun h(sec: Long) = String.format(java.util.Locale.US, "%.1f", sec / 3600.0)
+
+        listOf(
+            AchievementBadge(
+                key = "first", emoji = "🏃", title = "First Workout",
+                description = "Finish your first workout",
+                unlocked = totalWorkouts >= 1,
+                progress = "$totalWorkouts / 1 workouts"
+            ),
+            AchievementBadge(
+                key = "ten", emoji = "🔟", title = "Ten Workouts",
+                description = "Finish 10 workouts",
+                unlocked = totalWorkouts >= 10,
+                progress = "$totalWorkouts / 10 workouts"
+            ),
+            AchievementBadge(
+                key = "five_k", emoji = "🚀", title = "5K Finisher",
+                description = "Longest workout over 5 km",
+                unlocked = longestDist >= 5000.0,
+                progress = "${km(longestDist)} km / 5 km"
+            ),
+            AchievementBadge(
+                key = "ten_k", emoji = "🎯", title = "10K Finisher",
+                description = "Longest workout over 10 km",
+                unlocked = longestDist >= 10000.0,
+                progress = "${km(longestDist)} km / 10 km"
+            ),
+            AchievementBadge(
+                key = "hundred_k", emoji = "💯", title = "100K Club",
+                description = "100 km total distance",
+                unlocked = totalDistance >= 100000.0,
+                progress = "${km(totalDistance)} km / 100 km"
+            ),
+            AchievementBadge(
+                key = "streak7", emoji = "🔥", title = "7-Day Streak",
+                description = "Work out 7 days in a row",
+                unlocked = streak >= 7,
+                progress = "$streak / 7 days"
+            ),
+            AchievementBadge(
+                key = "tenk_steps", emoji = "👟", title = "10k Steps Day",
+                description = "Hit 10,000 real steps in a day",
+                unlocked = days.any { it.steps >= 10000 },
+                progress = "${days.count { it.steps >= 10000 }} days"
+            ),
+            AchievementBadge(
+                key = "elev500", emoji = "⛰️", title = "Elevation 500m",
+                description = "500 m elevation gain in one workout",
+                unlocked = maxElev >= 500.0,
+                progress = "${maxElev.toInt()} m / 500 m"
+            ),
+            AchievementBadge(
+                key = "ten_hours", emoji = "⏱️", title = "10 Hours",
+                description = "10 hours of total workout time",
+                unlocked = totalSeconds >= 36000L,
+                progress = "${h(totalSeconds)} h / 10 h"
+            ),
+            AchievementBadge(
+                key = "pet_friend", emoji = "🐾", title = "Pet Friend",
+                description = "Feed your pet treats with real steps",
+                unlocked = treats >= 1,
+                progress = "$treats treats"
+            )
+        )
     }
 }
