@@ -7,8 +7,15 @@ import android.os.Build
 import com.example.miles.wear.data.local.MilesDatabase
 import com.example.miles.wear.data.repository.MilesRepository
 import com.example.miles.wear.network.PhoneMessagingManager
+import com.example.miles.wear.sensor.BleSensorManager
 import com.example.miles.wear.sensor.SensorTracker
 import com.example.miles.wear.service.MoveReminderReceiver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class MilesWearApplication : Application() {
 
@@ -21,8 +28,13 @@ class MilesWearApplication : Application() {
     lateinit var sensorTracker: SensorTracker
         private set
 
+    lateinit var bleSensorManager: BleSensorManager
+        private set
+
     lateinit var phoneMessagingManager: PhoneMessagingManager
         private set
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     companion object {
         lateinit var instance: MilesWearApplication
@@ -46,6 +58,7 @@ class MilesWearApplication : Application() {
             database.trainingProgressDao()
         )
         sensorTracker = SensorTracker(this)
+        bleSensorManager = BleSensorManager(this)
         phoneMessagingManager = PhoneMessagingManager(this, repository).apply {
             initialize()
         }
@@ -56,6 +69,45 @@ class MilesWearApplication : Application() {
         com.example.miles.wear.engine.MoveReminderManager.applySetting(this)
         // Hands-free nav voice ready when needed.
         com.example.miles.wear.engine.NavigationVoice.init(this)
+
+        feedBleIntoSensors()
+        captureRestingHr()
+    }
+
+    /** External BLE strap/cadence values become the live workout signals. */
+    private fun feedBleIntoSensors() {
+        appScope.launch {
+            bleSensorManager.state.collect { state ->
+                if (state is BleSensorManager.ConnectionState.Connected) {
+                    sensorTracker.setExternalHeartRate(state.hrBpm)
+                    sensorTracker.setExternalCadence(state.cadenceRpm)
+                } else {
+                    sensorTracker.setExternalHeartRate(null)
+                    sensorTracker.setExternalCadence(null)
+                }
+            }
+        }
+    }
+
+    /** Today's resting HR = real lowest sustained idle HR sample (1-min min). */
+    private fun captureRestingHr() {
+        appScope.launch {
+            var minuteMin = 0
+            var ticks = 0
+            while (isActive) {
+                val bpm = sensorTracker.liveHeartRate.value.bpm
+                if (bpm in 40..150 && !sensorTracker.liveHeartRate.value.isFromExternal) {
+                    minuteMin = if (minuteMin == 0) bpm else minOf(minuteMin, bpm)
+                }
+                delay(1000L)
+                ticks++
+                if (ticks >= 60) {
+                    ticks = 0
+                    if (minuteMin > 0) repository.recordRestingBpm(minuteMin)
+                    minuteMin = 0
+                }
+            }
+        }
     }
 
     private fun createNotificationChannel() {

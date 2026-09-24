@@ -39,8 +39,16 @@
 - Compass and water lock
 - Sensor diagnostics
 - Export & backup (GPX, CSV, JSON) with on-device restore
+- Import workouts + backups from any app (GPX, JSON, share-to-MILES)
+- Street + satellite map on every workout (OSM & Esri tiles)
+- Detects the MILES phone app: on this device (package check) or nearby (Wearable capability) with tap-to-open
+- Phone sync with **zero Google Play Services**: local-network discovery (UDP beacon) + TCP messaging for live metrics, remote workout control, HR/cadence streaming and offline queue sync
 - Move reminders (sitting-streak nags, skip during workouts)
 - Voice navigation (spoken turn-by-turn cues)
+- Automatic km/mi splits with real pace
+- Resting heart rate (real lowest idle HR per day)
+- Daily calorie goal with dashboard progress
+- BLE heart-rate straps and cadence sensors
 - Privacy-focused, local-first design
 
 MILES does not intentionally generate fake GPS, heart-rate, or step data.
@@ -109,7 +117,6 @@ app/build/outputs/apk/debug/app-debug.apk
 
 - More sensor support
 - Better GPS filtering and route smoothing
-- BLE heart-rate / cadence sensors
 - Health Connect integration
 - Continued MILES Studio development
 
