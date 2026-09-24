@@ -38,9 +38,12 @@ class DailyRingsTileService : TileService() {
             null
         }
 
-        val steps = metrics?.steps ?: 4250
-        val calories = metrics?.caloriesKcal ?: 185
-        val bpm = metrics?.heartRate ?: 72
+        // Real data only: show "--" when the tracker has no readings yet.
+        val dailySteps = metrics?.dailySteps?.takeIf { it > 0 } ?: metrics?.steps?.takeIf { it > 0 }
+        val calories = metrics?.caloriesKcal?.takeIf { it > 0 }
+        val bpm = metrics?.heartRate?.takeIf { it > 0 }
+        val stepGoal = getSharedPreferences("miles_wear_prefs", MODE_PRIVATE)
+            .getInt("step_goal", 10000)
 
         val column = LayoutElementBuilders.Column.Builder()
             .setWidth(dp(180f))
@@ -64,7 +67,7 @@ class DailyRingsTileService : TileService() {
         // Row for Steps
         column.addContent(
             LayoutElementBuilders.Text.Builder()
-                .setText("👟 $steps / 10,000")
+                .setText("👟 ${dailySteps ?: "--"} / $stepGoal")
                 .setFontStyle(
                     LayoutElementBuilders.FontStyle.Builder()
                         .setSize(sp(14f))
@@ -79,7 +82,7 @@ class DailyRingsTileService : TileService() {
         // Row for Calories
         column.addContent(
             LayoutElementBuilders.Text.Builder()
-                .setText("🔥 $calories / 500 kcal")
+                .setText("🔥 ${calories ?: "--"} kcal")
                 .setFontStyle(
                     LayoutElementBuilders.FontStyle.Builder()
                         .setSize(sp(14f))
@@ -94,7 +97,7 @@ class DailyRingsTileService : TileService() {
         // Row for BPM
         column.addContent(
             LayoutElementBuilders.Text.Builder()
-                .setText("❤️ $bpm BPM")
+                .setText("❤️ ${bpm ?: "--"} BPM")
                 .setFontStyle(
                     LayoutElementBuilders.FontStyle.Builder()
                         .setSize(sp(14f))

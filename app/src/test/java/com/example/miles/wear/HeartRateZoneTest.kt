@@ -26,11 +26,15 @@ class HeartRateZoneTest {
     @Test
     fun testWorkoutTypes() {
         val types = WorkoutType.values()
-        assertEquals(5, types.size)
+        assertEquals(6, types.size)
         assertEquals("Running", WorkoutType.RUN.displayName)
         assertEquals("Walking", WorkoutType.WALK.displayName)
         assertEquals("Cycling", WorkoutType.CYCLING.displayName)
         assertEquals("Hiking", WorkoutType.HIKE.displayName)
-        assertEquals("Other", WorkoutType.OTHER.displayName)
+        assertEquals("General", WorkoutType.GENERAL.displayName)
+        assertEquals("Custom", WorkoutType.CUSTOM.displayName)
+        // Backwards-compat aliases still resolve to real types
+        assertEquals(WorkoutType.CYCLING, WorkoutType.RIDE)
+        assertEquals(WorkoutType.GENERAL, WorkoutType.OTHER)
     }
 }

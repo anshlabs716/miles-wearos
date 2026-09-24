@@ -44,24 +44,24 @@ class MilesComplicationService : ComplicationDataSourceService() {
             null
         }
 
-        val bpm = metrics?.heartRate?.takeIf { it > 0 } ?: 72
-        val cal = metrics?.caloriesKcal ?: 185
+        val bpm = metrics?.heartRate?.takeIf { it > 0 }
+        val cal = metrics?.caloriesKcal?.takeIf { it > 0 }
 
         val data: ComplicationData? = when (request.complicationType) {
             ComplicationType.RANGED_VALUE -> {
                 RangedValueComplicationData.Builder(
-                    value = bpm.toFloat(),
+                    value = (bpm ?: 0).toFloat(),
                     min = 40f,
                     max = 190f,
-                    contentDescription = PlainComplicationText.Builder("$bpm BPM").build()
-                ).setText(PlainComplicationText.Builder(bpm.toString()).build())
+                    contentDescription = PlainComplicationText.Builder("${bpm ?: "--"} BPM").build()
+                ).setText(PlainComplicationText.Builder((bpm ?: 0).toString()).build())
                  .setTitle(PlainComplicationText.Builder("BPM").build())
                  .build()
             }
             ComplicationType.SHORT_TEXT -> {
                 ShortTextComplicationData.Builder(
-                    text = PlainComplicationText.Builder(cal.toString()).build(),
-                    contentDescription = PlainComplicationText.Builder("$cal kcal").build()
+                    text = PlainComplicationText.Builder((cal ?: 0).toString()).build(),
+                    contentDescription = PlainComplicationText.Builder("${cal ?: "--"} kcal").build()
                 ).setTitle(PlainComplicationText.Builder("kcal").build())
                  .build()
             }

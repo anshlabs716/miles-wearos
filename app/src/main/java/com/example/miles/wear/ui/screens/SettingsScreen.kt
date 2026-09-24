@@ -151,6 +151,52 @@ fun SettingsScreen(
                 )
             }
 
+            // Section: Daily Goal
+            item {
+                Text(
+                    text = "DAILY STEP GOAL",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonCyan,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                val goals = intArrayOf(5000, 8000, 10000, 15000, 20000, 25000)
+                Chip(
+                    onClick = {
+                        val current = settings.stepGoal
+                        val idx = goals.indexOf(current)
+                        val next = goals[(idx + 1).coerceAtLeast(0) % goals.size]
+                        repository.updateSettings(settings.copy(stepGoal = next))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Goal: ${settings.stepGoal} steps",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = VividGreen
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Tap to change (5k–25k). Goal bar + tile use this.",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
             // Section: Themes & Visual Customization
             item {
                 Text(

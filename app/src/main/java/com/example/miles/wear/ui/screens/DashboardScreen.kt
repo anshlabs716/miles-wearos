@@ -21,8 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +32,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,6 +51,8 @@ import com.example.miles.wear.R
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.GpsStatus
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.engine.WearWeather
+import com.example.miles.wear.engine.WearWeatherFetcher
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
@@ -63,6 +68,8 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenMap: () -> Unit,
+    onOpenCompass: () -> Unit,
+    onStartQuickWorkout: (WorkoutType) -> Unit,
     onOpenMirrored: () -> Unit,
     onSelectSession: (Long) -> Unit
 ) {
@@ -84,6 +91,14 @@ fun DashboardScreen(
     val settings by repository.settings.collectAsStateWithLifecycle()
     val gpsStatus by sensorTracker.gpsStatus.collectAsStateWithLifecycle()
     val batteryPercent by sensorTracker.batteryPercent.collectAsStateWithLifecycle()
+
+    // Real current weather (Open-Meteo), fetched once on load, tap to refresh
+    val context = LocalContext.current
+    var weather by remember { mutableStateOf(WearWeather()) }
+    var weatherRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        weather = WearWeatherFetcher.fetch(context)
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -303,17 +318,22 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Daily Activity Progress Bar (10,000 steps daily goal)
+                    // Daily Activity Progress Bar (configurable daily goal from Settings)
                     Spacer(modifier = Modifier.height(6.dp))
-                    val stepGoal = 10000
+                    val stepGoal = settings.stepGoal
                     val progressFraction = (displaySteps.toFloat() / stepGoal).coerceIn(0f, 1f)
                     val progressPercent = (progressFraction * 100).toInt()
+                    val goalLabel = if (stepGoal >= 1000 && stepGoal % 1000 == 0) {
+                        "${stepGoal / 1000}k"
+                    } else {
+                        "$stepGoal"
+                    }
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(text = "DAILY GOAL (10k)", fontSize = 8.sp, color = MutedGray, fontWeight = FontWeight.Bold)
+                            Text(text = "DAILY GOAL ($goalLabel)", fontSize = 8.sp, color = MutedGray, fontWeight = FontWeight.Bold)
                             Text(text = "$progressPercent%", fontSize = 8.sp, color = VividGreen, fontWeight = FontWeight.Bold)
                         }
                         Spacer(modifier = Modifier.height(2.dp))
@@ -334,6 +354,60 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            // Weather (real Open-Meteo data, tap to refresh)
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                val w = weather
+                Chip(
+                    onClick = {
+                        weatherRefreshing = true
+                        coroutineScope.launch {
+                            weather = WearWeatherFetcher.fetch(context)
+                            weatherRefreshing = false
+                        }
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🌦️", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            if (w.isAvailable) {
+                                Text(
+                                    text = "${w.emoji ?: ""} ${w.temperatureC?.toInt() ?: "--"}° • ${w.condition ?: ""}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            } else {
+                                Text(
+                                    text = if (weatherRefreshing) "Refreshing…" else "Weather",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NeonCyan
+                                )
+                            }
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (w.isAvailable) {
+                                "Wind ${w.windSpeedKmh?.toInt() ?: "--"} km/h"
+                            } else {
+                                "Offline — tap to retry"
+                            },
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
             }
 
             // Large Primary Action: START WORKOUT
@@ -362,6 +436,44 @@ fun DashboardScreen(
                 )
             }
 
+            // Quick Actions: one-tap workout starts (real tracking, same engine as START WORKOUT)
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(0.94f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    QuickStartChip(
+                        text = "🚶 Walk",
+                        onClick = { onStartQuickWorkout(WorkoutType.WALK) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickStartChip(
+                        text = "🏃 Run",
+                        onClick = { onStartQuickWorkout(WorkoutType.RUN) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(0.94f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    QuickStartChip(
+                        text = "🚴 Bike",
+                        onClick = { onStartQuickWorkout(WorkoutType.CYCLING) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickStartChip(
+                        text = "⛰️ Hike",
+                        onClick = { onStartQuickWorkout(WorkoutType.HIKE) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
             // Quick Access: Map
             item {
                 Chip(
@@ -388,6 +500,39 @@ fun DashboardScreen(
                     secondaryLabel = {
                         Text(
                             text = "OpenStreetMap • Current location",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Compass
+            item {
+                Chip(
+                    onClick = onOpenCompass,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🧭", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Compass",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElectricAmber
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Magnetic heading",
                             fontSize = 9.sp,
                             color = MutedGray
                         )
@@ -641,4 +786,31 @@ fun DashboardScreen(
             }
         }
     }
+}
+
+/** Small two-button quick-start chip used for one-tap workout launch. */
+@Composable
+private fun QuickStartChip(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Chip(
+        onClick = onClick,
+        colors = ChipDefaults.chipColors(
+            backgroundColor = Color(0xFF23262E),
+            contentColor = Color.White
+        ),
+        modifier = modifier.padding(vertical = 2.dp),
+        label = {
+            Text(
+                text = text,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        }
+    )
 }
