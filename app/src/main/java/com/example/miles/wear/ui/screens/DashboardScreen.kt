@@ -76,7 +76,9 @@ fun DashboardScreen(
     onOpenMirrored: () -> Unit,
     onSelectSession: (Long) -> Unit,
     onOpenRecords: () -> Unit = {},
-    onOpenPet: () -> Unit = {}
+    onOpenPet: () -> Unit = {},
+    onOpenRoutes: () -> Unit = {},
+    onOpenTraining: () -> Unit = {}
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -692,6 +694,72 @@ fun DashboardScreen(
                     secondaryLabel = {
                         Text(
                             text = "PRs from real workout history",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Saved Routes
+            item {
+                Chip(
+                    onClick = onOpenRoutes,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF0E2433),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "📍", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Routes",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Saved routes • follow anytime",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Training Plans
+            item {
+                Chip(
+                    onClick = onOpenTraining,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF33141E),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🏋️", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Training Plans",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CoralFlame
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "C25K • 5K • 10K • HIIT",
                             fontSize = 9.sp,
                             color = MutedGray
                         )

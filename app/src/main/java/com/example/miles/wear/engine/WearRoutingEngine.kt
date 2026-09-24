@@ -27,6 +27,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Real turn-by-turn navigation for the watch via OSRM (free, no API key).
@@ -72,6 +73,87 @@ object WearRoutingEngine {
     }
 
     fun isNavigating(): Boolean = _navState.value?.isArrived == false && _route.value != null
+
+    /** Total length (meters) of the currently active route, real or followed. */
+    val currentTotalMeters: Double
+        get() = _route.value?.let { pts -> fetched?.totalMeters ?: 0.0 } ?: 0.0
+
+    /**
+     * Follow a saved route (no network needed): draws it and tracks the user
+     * along it with the same progress/arrival/ETA logic as live navigation.
+     */
+    @SuppressLint("MissingPermission")
+    fun followRoute(context: Context, points: List<GpsPoint>, name: String) {
+        stop()
+        if (points.size < 2) return
+        val totalMeters = polylineMeters(points)
+        if (totalMeters <= 0.0) return
+        // Real speed assumption for the ETA: brisk walk ≈ 1.4 m/s
+        val durationSeconds = (totalMeters / 1.4).toLong().coerceAtLeast(60L)
+        val route = Route(
+            points = points,
+            steps = listOf(RouteStep("Follow $name", "", totalMeters)),
+            totalMeters = totalMeters,
+            durationSeconds = durationSeconds
+        )
+        fetched = route
+        _destination.value = points.lastOrNull()
+        _route.value = points
+        _navState.value = NavState(
+            maneuver = "Follow route",
+            streetName = name,
+            distanceToNextMeters = totalMeters,
+            remainingMeters = totalMeters,
+            remainingMinutes = durationSeconds / 60L,
+            isFetching = false,
+            hasRoute = true
+        )
+
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        manager = lm
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                currentPosition = GpsPoint(location.latitude, location.longitude, location.altitude, location.speed.toDouble(), location.time)
+            }
+            override fun onProviderEnabled(provider: String) = Unit
+            override fun onProviderDisabled(provider: String) = Unit
+            @Deprecated("Deprecated in Android")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+        }
+        locListener = listener
+        try {
+            val provider = when {
+                lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true -> LocationManager.GPS_PROVIDER
+                lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true -> LocationManager.NETWORK_PROVIDER
+                else -> null
+            }
+            provider?.let {
+                lm?.requestLocationUpdates(it, 1000L, 2f, listener, Looper.getMainLooper())
+            }
+        } catch (_: SecurityException) {
+        }
+
+        startUpdateLoop(route)
+    }
+
+    /** Approximate route length across the polyline (haversine per segment). */
+    private fun polylineMeters(points: List<GpsPoint>): Double {
+        var total = 0.0
+        for (i in 0 until points.size - 1) {
+            total += haversineMeters(points[i], points[i + 1])
+        }
+        return total
+    }
+
+    private fun haversineMeters(a: GpsPoint, b: GpsPoint): Double {
+        val earthR = 6371000.0
+        val dLat = Math.toRadians(b.lat - a.lat)
+        val dLon = Math.toRadians(b.lon - a.lon)
+        val h = sin(dLat / 2) * sin(dLat / 2) +
+            cos(Math.toRadians(a.lat)) * cos(Math.toRadians(b.lat)) *
+            sin(dLon / 2) * sin(dLon / 2)
+        return 2 * earthR * atan2(sqrt(h), sqrt(1 - h))
+    }
 
     /** Begin navigating to [dest] from the device's current location. */
     @SuppressLint("MissingPermission")

@@ -9,6 +9,8 @@ import com.example.miles.wear.data.local.entity.QueueItemEntity
 import com.example.miles.wear.data.local.entity.SavedPinEntity
 import com.example.miles.wear.data.local.entity.DayStatsEntity
 import com.example.miles.wear.data.local.entity.PetEntity
+import com.example.miles.wear.data.local.entity.SavedRouteEntity
+import com.example.miles.wear.data.local.entity.TrainingProgressEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -91,4 +93,31 @@ interface PetDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun savePet(pet: PetEntity)
+}
+
+@Dao
+interface SavedRouteDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRoute(route: SavedRouteEntity): Long
+
+    @Query("SELECT * FROM saved_routes ORDER BY createdAt DESC")
+    fun getAllRoutes(): Flow<List<SavedRouteEntity>>
+
+    @Query("SELECT * FROM saved_routes ORDER BY createdAt DESC")
+    suspend fun getAllRoutesNow(): List<SavedRouteEntity>
+
+    @Query("SELECT * FROM saved_routes WHERE id = :id")
+    suspend fun getRouteById(id: Long): SavedRouteEntity?
+
+    @Query("DELETE FROM saved_routes WHERE id = :id")
+    suspend fun deleteRoute(id: Long)
+}
+
+@Dao
+interface TrainingProgressDao {
+    @Query("SELECT * FROM training_progress LIMIT 1")
+    suspend fun getProgress(): TrainingProgressEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveProgress(progress: TrainingProgressEntity)
 }

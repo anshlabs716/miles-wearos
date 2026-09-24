@@ -6,19 +6,26 @@ import com.example.miles.wear.data.local.dao.DayStatsDao
 import com.example.miles.wear.data.local.dao.PetDao
 import com.example.miles.wear.data.local.dao.QueueDao
 import com.example.miles.wear.data.local.dao.SavedPinDao
+import com.example.miles.wear.data.local.dao.SavedRouteDao
+import com.example.miles.wear.data.local.dao.TrainingProgressDao
 import com.example.miles.wear.data.local.dao.WorkoutSessionDao
 import com.example.miles.wear.data.local.entity.DayStatsEntity
 import com.example.miles.wear.data.local.entity.PetEntity
 import com.example.miles.wear.data.local.entity.QueueItemEntity
 import com.example.miles.wear.data.local.entity.SavedPinEntity
+import com.example.miles.wear.data.local.entity.SavedRouteEntity
+import com.example.miles.wear.data.local.entity.TrainingProgressEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.AchievementBadge
 import com.example.miles.wear.data.model.DistanceUnit
+import com.example.miles.wear.data.model.GpsPoint
 import com.example.miles.wear.data.model.HudLayoutMode
 import com.example.miles.wear.data.model.PetType
 import com.example.miles.wear.data.model.PrimaryMetricType
 import com.example.miles.wear.data.model.RecordsSummary
 import com.example.miles.wear.data.model.ThemeAccent
+import com.example.miles.wear.data.model.TrainingCatalog
+import com.example.miles.wear.data.model.TrainingPlanState
 import com.example.miles.wear.data.model.WearSettings
 import com.example.miles.wear.data.model.WeeklyProgress
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +34,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MilesRepository(
     context: Context,
@@ -34,7 +43,9 @@ class MilesRepository(
     private val sessionDao: WorkoutSessionDao,
     private val pinDao: SavedPinDao,
     private val dayStatsDao: DayStatsDao,
-    private val petDao: PetDao
+    private val petDao: PetDao,
+    private val routeDao: SavedRouteDao,
+    private val trainingDao: TrainingProgressDao
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("miles_wear_prefs", Context.MODE_PRIVATE)
 
@@ -431,5 +442,120 @@ class MilesRepository(
                 progress = "$treats treats"
             )
         )
+    }
+
+    // ----- Saved routes (real GPS points from navigation or pins) -----
+    val allSavedRoutes: Flow<List<SavedRouteEntity>> = routeDao.getAllRoutes()
+
+    suspend fun getRoutesNow(): List<SavedRouteEntity> = withContext(Dispatchers.IO) {
+        routeDao.getAllRoutesNow()
+    }
+
+    suspend fun getRouteById(id: Long): SavedRouteEntity? = withContext(Dispatchers.IO) {
+        routeDao.getRouteById(id)
+    }
+
+    suspend fun saveRoute(name: String, points: List<GpsPoint>, distanceMeters: Double) {
+        withContext(Dispatchers.IO) {
+            if (points.size < 2) return@withContext
+            routeDao.insertRoute(
+                SavedRouteEntity(
+                    name = name,
+                    pointsJson = gpsPointsToJson(points),
+                    distanceMeters = distanceMeters
+                )
+            )
+        }
+    }
+
+    suspend fun deleteRoute(id: Long) {
+        withContext(Dispatchers.IO) {
+            routeDao.deleteRoute(id)
+        }
+    }
+
+    /** Decodes a saved route's points back for drawing/following. */
+    fun routePoints(route: SavedRouteEntity): List<GpsPoint> = parseGpsPoints(route.pointsJson)
+
+    // ----- Progressive training plans -----
+    fun setPendingTrainingDay(dayId: String?) {
+        prefs.edit()
+            .putString("training_pending_day", dayId ?: "")
+            .apply()
+    }
+
+    /** Marks the pending plan day complete (called when a workout really finishes). */
+    suspend fun completePendingTrainingDayIfAny() = withContext(Dispatchers.IO) {
+        val dayId = prefs.getString("training_pending_day", null)?.takeIf { it.isNotBlank() }
+            ?: return@withContext
+        val progress = trainingDao.getProgress() ?: return@withContext
+        val done = (parseDaySet(progress.completedJson) + dayId).toSortedSet()
+        val plan = TrainingCatalog.byKey(progress.planKey)
+        val allDone = plan != null && plan.workoutDays.all { it.id in done }
+        trainingDao.saveProgress(
+            progress.copy(
+                completedJson = JSONArray(done.toList()).toString(),
+                finishedAtEpochDay = if (allDone) java.time.LocalDate.now().toEpochDay() else progress.finishedAtEpochDay
+            )
+        )
+        prefs.edit().remove("training_pending_day").apply()
+    }
+
+    suspend fun trainingPlanState(): TrainingPlanState = withContext(Dispatchers.IO) {
+        val p = trainingDao.getProgress() ?: return@withContext TrainingPlanState()
+        TrainingPlanState(
+            planKey = p.planKey,
+            started = p.startedEpochDay > 0,
+            completedDayIds = parseDaySet(p.completedJson),
+            finished = p.finishedAtEpochDay > 0
+        )
+    }
+
+    suspend fun startTrainingPlan(key: String) = withContext(Dispatchers.IO) {
+        trainingDao.saveProgress(
+            TrainingProgressEntity(
+                planKey = key,
+                startedEpochDay = java.time.LocalDate.now().toEpochDay(),
+                completedJson = "[]"
+            )
+        )
+    }
+
+    private fun parseDaySet(json: String): Set<String> = try {
+        val arr = JSONArray(json)
+        (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }.toSet()
+    } catch (_: Exception) {
+        emptySet()
+    }
+
+    private fun gpsPointsToJson(points: List<GpsPoint>): String {
+        val arr = JSONArray()
+        points.forEach { p ->
+            arr.put(
+                JSONObject()
+                    .put("lat", p.lat)
+                    .put("lon", p.lon)
+                    .put("alt", p.alt)
+                    .put("speed", p.speed)
+                    .put("t", p.timestamp)
+            )
+        }
+        return arr.toString()
+    }
+
+    private fun parseGpsPoints(json: String): List<GpsPoint> = try {
+        val arr = JSONArray(json)
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            GpsPoint(
+                lat = o.optDouble("lat"),
+                lon = o.optDouble("lon"),
+                alt = o.optDouble("alt", 0.0),
+                speed = o.optDouble("speed", 0.0),
+                timestamp = o.optLong("t", 0L)
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
     }
 }

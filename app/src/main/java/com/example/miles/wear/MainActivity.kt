@@ -53,8 +53,11 @@ import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
 import com.example.miles.wear.ui.screens.MapsScreen
 import com.example.miles.wear.ui.screens.PetScreen
 import com.example.miles.wear.ui.screens.RecordsScreen
+import com.example.miles.wear.ui.screens.SavedRoutesScreen
 import com.example.miles.wear.ui.screens.SensorsDiagnosticScreen
 import com.example.miles.wear.ui.screens.SettingsScreen
+import com.example.miles.wear.ui.screens.TrainingPlanDetailScreen
+import com.example.miles.wear.ui.screens.TrainingPlansScreen
 import com.example.miles.wear.ui.screens.WaterLockScreen
 import com.example.miles.wear.ui.screens.WorkoutDetailScreen
 import com.example.miles.wear.ui.screens.WorkoutSelectionScreen
@@ -104,7 +107,8 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
         val list = mutableListOf(
             Manifest.permission.BODY_SENSORS,
             Manifest.permission.ACTIVITY_RECOGNITION,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             list.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -191,6 +195,12 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     onOpenCompass = {
                         navController.navigate("compass")
                     },
+                    onOpenRoutes = {
+                        navController.navigate("routes")
+                    },
+                    onOpenTraining = {
+                        navController.navigate("training")
+                    },
                     onStartQuickWorkout = { type ->
                         navController.navigate("active_workout/${type.name}")
                     },
@@ -256,8 +266,52 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                 )
             }
 
-            composable("map") {
-                MapsScreen()
+            composable(
+                route = "map?follow={follow}",
+                arguments = listOf(
+                    androidx.navigation.navArgument("follow") {
+                        type = androidx.navigation.NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                val followId = backStackEntry.arguments?.getString("follow")?.toLongOrNull()
+                MapsScreen(followRouteId = followId)
+            }
+
+            composable("routes") {
+                SavedRoutesScreen(
+                    onFollow = { routeId ->
+                        navController.navigate("map?follow=$routeId")
+                    },
+                    onNewRoute = {
+                        navController.navigate("map")
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("training") {
+                TrainingPlansScreen(
+                    onSelectPlan = { planKey ->
+                        navController.navigate("training/$planKey")
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("training/{key}") { backStackEntry ->
+                val planKey = backStackEntry.arguments?.getString("key") ?: "c25k"
+                TrainingPlanDetailScreen(
+                    planKey = planKey,
+                    onStartDay = { day ->
+                        MilesWearApplication.instance.repository.setPendingTrainingDay(day.id)
+                        navController.navigate("active_workout/${day.workoutType.name}?plan=${day.plan.encode()}") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             composable("compass") {
