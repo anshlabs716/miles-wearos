@@ -176,21 +176,32 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
         }
     }
 
+    private fun settingsPrefs() =
+        context.getSharedPreferences("miles_wear_prefs", Context.MODE_PRIVATE)
+
+    private fun isEcoMode(): Boolean =
+        _isLowPowerMode.value || settingsPrefs().getBoolean("battery_saver_enabled", false)
+
     private fun registerSensors() {
-        val delay = if (_isLowPowerMode.value) {
+        val prefs = settingsPrefs()
+        val delay = if (isEcoMode()) {
             SensorManager.SENSOR_DELAY_NORMAL
         } else {
             SensorManager.SENSOR_DELAY_UI
         }
 
-        heartRateSensor?.let {
-            sensorManager.registerListener(this, it, delay)
+        if (prefs.getBoolean("hr_enabled", true)) {
+            heartRateSensor?.let {
+                sensorManager.registerListener(this, it, delay)
+            }
         }
-        stepCounterSensor?.let {
-            sensorManager.registerListener(this, it, delay)
-        }
-        stepDetectorSensor?.let {
-            sensorManager.registerListener(this, it, delay)
+        if (prefs.getBoolean("step_tracking_enabled", true)) {
+            stepCounterSensor?.let {
+                sensorManager.registerListener(this, it, delay)
+            }
+            stepDetectorSensor?.let {
+                sensorManager.registerListener(this, it, delay)
+            }
         }
         pressureSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
@@ -215,9 +226,11 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     @SuppressLint("MissingPermission")
     private fun requestLocationUpdates() {
         try {
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                val minTime = if (_isLowPowerMode.value) 10000L else 2000L
-                val minDistance = if (_isLowPowerMode.value) 10f else 2f
+            if (settingsPrefs().getBoolean("gps_enabled", true) &&
+                locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+            ) {
+                val minTime = if (isEcoMode()) 10000L else 2000L
+                val minDistance = if (isEcoMode()) 10f else 2f
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
                     minTime,

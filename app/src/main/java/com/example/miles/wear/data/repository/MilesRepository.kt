@@ -59,6 +59,7 @@ class MilesRepository(
         val workoutFinishHaptic = prefs.getBoolean("workout_finish_haptic", true)
         val splitHaptic = prefs.getBoolean("split_haptic", true)
         val highContrastText = prefs.getBoolean("high_contrast_text", false)
+        val stepGoal = prefs.getInt("step_goal", 10000)
 
         return WearSettings(
             unit = unit,
@@ -83,7 +84,8 @@ class MilesRepository(
             workoutPauseResumeHaptic = workoutPauseResumeHaptic,
             workoutFinishHaptic = workoutFinishHaptic,
             splitHaptic = splitHaptic,
-            highContrastText = highContrastText
+            highContrastText = highContrastText,
+            stepGoal = stepGoal
         )
     }
 
@@ -113,6 +115,7 @@ class MilesRepository(
             .putBoolean("workout_finish_haptic", newSettings.workoutFinishHaptic)
             .putBoolean("split_haptic", newSettings.splitHaptic)
             .putBoolean("high_contrast_text", newSettings.highContrastText)
+            .putInt("step_goal", newSettings.stepGoal)
             .apply()
     }
 

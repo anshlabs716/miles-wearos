@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,8 +42,10 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
+import com.example.miles.wear.ui.screens.CompassScreen
 import com.example.miles.wear.ui.screens.DashboardScreen
 import com.example.miles.wear.ui.screens.HistoryScreen
 import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
@@ -113,6 +116,22 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Keep watch screen awake while enabled in Settings
+    val repository = MilesWearApplication.instance.repository
+    val wearSettings by repository.settings.collectAsStateWithLifecycle()
+    val activity = context as? android.app.Activity
+    DisposableEffect(wearSettings.keepScreenOn) {
+        if (wearSettings.keepScreenOn) {
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     LaunchedEffect(Unit) {
         val allHave = requiredPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
@@ -159,6 +178,12 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     onOpenMap = {
                         navController.navigate("map")
                     },
+                    onOpenCompass = {
+                        navController.navigate("compass")
+                    },
+                    onStartQuickWorkout = { type ->
+                        navController.navigate("active_workout/${type.name}")
+                    },
                     onOpenMirrored = {
                         navController.navigate("mirrored_workout")
                     },
@@ -197,6 +222,10 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
 
             composable("map") {
                 MapsScreen()
+            }
+
+            composable("compass") {
+                CompassScreen()
             }
 
             composable("mirrored_workout") {

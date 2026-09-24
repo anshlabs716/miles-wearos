@@ -19,6 +19,7 @@ import com.example.miles.wear.MainActivity
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.R
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
+import com.example.miles.wear.data.model.GpsStatus
 import com.example.miles.wear.data.model.HeartRateZone
 import com.example.miles.wear.data.model.WorkoutState
 import com.example.miles.wear.data.model.WorkoutType
@@ -54,6 +55,9 @@ class WorkoutTrackingService : Service() {
     private var elapsedSeconds = 0L
     private var lastVibratedKilometer = 0
     private var currentSessionId: Long = 0
+    private var autoPauseJob: Job? = null
+    private var slowTicks = 0
+    private var fastTicks = 0
 
     inner class LocalBinder : Binder() {
         fun getService(): WorkoutTrackingService = this@WorkoutTrackingService
@@ -135,6 +139,7 @@ class WorkoutTrackingService : Service() {
         }
 
         startTicker()
+        startAutoPauseWatcher()
     }
 
     fun pauseWorkout() {
@@ -160,12 +165,19 @@ class WorkoutTrackingService : Service() {
     fun finishWorkout() {
         _workoutState.value = WorkoutState.COMPLETED
         tickerJob?.cancel()
+        autoPauseJob?.cancel()
         sensorTracker.stopTracking()
 
-        // Haptic celebratory vibration
-        vibratePattern(longArrayOf(0, 200, 100, 200, 100, 400))
+        // Haptic celebratory vibration (toggleable in Settings)
+        if (repository.settings.value.workoutFinishHaptic) {
+            vibratePattern(longArrayOf(0, 200, 100, 200, 100, 400))
+        }
 
         val finalMetrics = sensorTracker.liveMetrics.value
+        // Real route + heart-rate statistics captured from the live tracker
+        val routeJson = sensorTracker.getRouteJson()
+        val hrAvg = sensorTracker.avgBpm
+        val hrMax = sensorTracker.maxBpm
         scope.launch {
             if (currentSessionId > 0) {
                 val updated = WorkoutSessionEntity(
@@ -175,12 +187,13 @@ class WorkoutTrackingService : Service() {
                     endTime = System.currentTimeMillis(),
                     durationSeconds = elapsedSeconds,
                     totalSteps = finalMetrics.steps,
-                    avgBpm = finalMetrics.heartRate,
-                    maxBpm = finalMetrics.heartRate,
+                    avgBpm = if (hrAvg > 0) hrAvg else finalMetrics.heartRate,
+                    maxBpm = if (hrMax > 0) hrMax else finalMetrics.heartRate,
                     caloriesKcal = finalMetrics.caloriesKcal,
                     distanceMeters = finalMetrics.distanceMeters,
                     elevationGainMeters = finalMetrics.elevationGainMeters,
-                    isSyncedToPhone = false
+                    isSyncedToPhone = false,
+                    routeGeoJson = routeJson
                 )
                 repository.updateWorkoutSession(updated)
             }
@@ -193,6 +206,7 @@ class WorkoutTrackingService : Service() {
     fun discardWorkout() {
         _workoutState.value = WorkoutState.DISCARDED
         tickerJob?.cancel()
+        autoPauseJob?.cancel()
         sensorTracker.stopTracking()
 
         scope.launch {
@@ -203,6 +217,58 @@ class WorkoutTrackingService : Service() {
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * Auto-pause/resume (toggleable in Settings): pauses when GPS shows the
+     * user is stationary (>15s under 0.5 m/s), resumes when moving again.
+     */
+    private fun startAutoPauseWatcher() {
+        autoPauseJob?.cancel()
+        autoPauseJob = scope.launch {
+            while (isActive) {
+                val prefs = repository.settings.value
+                val isOutdoor = _currentWorkoutType.value != WorkoutType.OTHER &&
+                    _currentWorkoutType.value != WorkoutType.GENERAL
+                if (prefs.autoPauseEnabled && isOutdoor) {
+                    val m = sensorTracker.liveMetrics.value
+                    when (_workoutState.value) {
+                        WorkoutState.RUNNING -> {
+                            if (m.gpsStatus == GpsStatus.READY && m.speedMps < 0.5) {
+                                slowTicks++
+                                if (slowTicks >= 3) { // ~15 seconds stationary
+                                    slowTicks = 0
+                                    pauseWorkout()
+                                }
+                            } else {
+                                slowTicks = 0
+                            }
+                        }
+
+                        WorkoutState.PAUSED -> {
+                            if (m.speedMps > 1.5) {
+                                fastTicks++
+                                if (fastTicks >= 2) {
+                                    fastTicks = 0
+                                    resumeWorkout()
+                                }
+                            } else {
+                                fastTicks = 0
+                            }
+                        }
+
+                        else -> {
+                            slowTicks = 0
+                            fastTicks = 0
+                        }
+                    }
+                } else {
+                    slowTicks = 0
+                    fastTicks = 0
+                }
+                delay(5000L)
+            }
+        }
     }
 
     private fun startTicker() {
@@ -234,7 +300,7 @@ class WorkoutTrackingService : Service() {
                 }
 
                 // Check HR zone alerts
-                if (hr.bpm >= HeartRateZone.MAX.minBpm) {
+                if (hr.bpm >= HeartRateZone.MAX.minBpm && repository.settings.value.hapticAlertsEnabled) {
                     vibratePattern(longArrayOf(0, 100, 80, 100))
                 }
 

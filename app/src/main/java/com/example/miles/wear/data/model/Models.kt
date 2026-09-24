@@ -140,7 +140,8 @@ data class WearSettings(
     val workoutPauseResumeHaptic: Boolean = true,
     val workoutFinishHaptic: Boolean = true,
     val splitHaptic: Boolean = true,
-    val highContrastText: Boolean = false
+    val highContrastText: Boolean = false,
+    val stepGoal: Int = 10000
 )
 
 enum class HeartRateZone(

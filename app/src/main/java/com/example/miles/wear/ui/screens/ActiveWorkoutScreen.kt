@@ -399,12 +399,21 @@ fun ActiveWorkoutScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (workoutType == WorkoutType.RUN || workoutType == WorkoutType.WALK) {
-                        StatPill(
-                            value = "${metrics.steps} (${metrics.cadenceSpm} spm)",
-                            label = "STEPS • CADENCE",
-                            color = ElectricAmber,
-                            modifier = Modifier.weight(1f)
-                        )
+                        if (settings.showCadenceInHud) {
+                            StatPill(
+                                value = "${metrics.steps} (${metrics.cadenceSpm} spm)",
+                                label = "STEPS • CADENCE",
+                                color = ElectricAmber,
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            StatPill(
+                                value = "${metrics.steps} steps",
+                                label = "WORKOUT STEPS",
+                                color = ElectricAmber,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     } else {
                         StatPill(
                             value = "${metrics.steps} steps",
