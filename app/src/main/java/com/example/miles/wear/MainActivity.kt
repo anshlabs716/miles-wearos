@@ -48,6 +48,7 @@ import com.example.miles.wear.data.model.WorkoutType
 import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
 import com.example.miles.wear.ui.screens.CompassScreen
 import com.example.miles.wear.ui.screens.DashboardScreen
+import com.example.miles.wear.ui.screens.ExportBackupScreen
 import com.example.miles.wear.ui.screens.HistoryScreen
 import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
 import com.example.miles.wear.ui.screens.MapsScreen
@@ -200,6 +201,9 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     },
                     onOpenTraining = {
                         navController.navigate("training")
+                    },
+                    onOpenExport = {
+                        navController.navigate("export")
                     },
                     onStartQuickWorkout = { type ->
                         navController.navigate("active_workout/${type.name}")
@@ -379,6 +383,12 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
             composable("water_lock") {
                 WaterLockScreen(
                     onUnlock = { navController.popBackStack() }
+                )
+            }
+
+            composable("export") {
+                ExportBackupScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
             }

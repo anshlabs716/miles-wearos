@@ -231,6 +231,7 @@ object WearRoutingEngine {
         lastSegmentIndex = -1
         alertedNearTurn = false
         currentPosition = null
+        NavigationVoice.stopSpeaking()
         _route.value = null
         _destination.value = null
         _navState.value = null
@@ -272,6 +273,7 @@ object WearRoutingEngine {
 
         if (arrived) {
             if (!(_navState.value?.isArrived == true)) {
+                NavigationVoice.speak("You have arrived")
                 _navState.value = NavState(
                     maneuver = "Arrived",
                     streetName = currentStep.streetName,
@@ -283,6 +285,12 @@ object WearRoutingEngine {
                 )
             }
             return
+        }
+
+        if (isNewSegment) {
+            NavigationVoice.speak(
+                NavigationVoice.cue(currentStep.text, currentStep.streetName, distToNext)
+            )
         }
 
         val nextStep = route.steps.getOrNull(seg + 1)

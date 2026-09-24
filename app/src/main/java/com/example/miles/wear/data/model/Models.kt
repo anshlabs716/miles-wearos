@@ -146,7 +146,11 @@ data class WearSettings(
     val weeklyDistanceKm: Double = 0.0,
     val weeklyActiveMinutes: Int = 0,
     // Fitness pet
-    val lazyDaysPerWeek: Int = 2
+    val lazyDaysPerWeek: Int = 2,
+    // Wave B: reminders + voice
+    val moveReminderEnabled: Boolean = false,
+    val moveReminderIntervalMin: Int = 60,
+    val voiceNavEnabled: Boolean = true
 )
 
 enum class HeartRateZone(

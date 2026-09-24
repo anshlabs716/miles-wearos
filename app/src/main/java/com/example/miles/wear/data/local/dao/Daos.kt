@@ -57,6 +57,12 @@ interface WorkoutSessionDao {
 
     @Query("DELETE FROM workout_sessions WHERE id = :id")
     suspend fun deleteSession(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(sessions: List<WorkoutSessionEntity>)
+
+    @Query("DELETE FROM workout_sessions")
+    suspend fun clearSessions()
 }
 
 @Dao
@@ -72,6 +78,12 @@ interface SavedPinDao {
 
     @Query("DELETE FROM saved_pins WHERE id = :id")
     suspend fun deletePin(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(pins: List<SavedPinEntity>)
+
+    @Query("DELETE FROM saved_pins")
+    suspend fun clearPins()
 }
 
 @Dao
@@ -84,6 +96,12 @@ interface DayStatsDao {
 
     @Query("SELECT * FROM day_stats WHERE dateKey = :key")
     suspend fun getDay(key: String): DayStatsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(days: List<DayStatsEntity>)
+
+    @Query("DELETE FROM day_stats")
+    suspend fun clearDays()
 }
 
 @Dao
@@ -93,6 +111,9 @@ interface PetDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun savePet(pet: PetEntity)
+
+    @Query("DELETE FROM pet")
+    suspend fun clearPet()
 }
 
 @Dao
@@ -111,6 +132,12 @@ interface SavedRouteDao {
 
     @Query("DELETE FROM saved_routes WHERE id = :id")
     suspend fun deleteRoute(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(routes: List<SavedRouteEntity>)
+
+    @Query("DELETE FROM saved_routes")
+    suspend fun clearRoutes()
 }
 
 @Dao
@@ -120,4 +147,7 @@ interface TrainingProgressDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveProgress(progress: TrainingProgressEntity)
+
+    @Query("DELETE FROM training_progress")
+    suspend fun clearProgress()
 }

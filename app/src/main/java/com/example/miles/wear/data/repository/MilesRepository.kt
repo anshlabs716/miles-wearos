@@ -87,6 +87,9 @@ class MilesRepository(
         val weeklyDistanceKm = prefs.getFloat("weekly_distance_km", 0f).toDouble()
         val weeklyActiveMinutes = prefs.getInt("weekly_active_minutes", 0)
         val lazyDaysPerWeek = prefs.getInt("lazy_days_per_week", 2)
+        val moveReminderEnabled = prefs.getBoolean("move_reminder_enabled", false)
+        val moveReminderIntervalMin = prefs.getInt("move_reminder_interval_min", 60)
+        val voiceNavEnabled = prefs.getBoolean("voice_nav_enabled", true)
 
         return WearSettings(
             unit = unit,
@@ -115,7 +118,10 @@ class MilesRepository(
             stepGoal = stepGoal,
             weeklyDistanceKm = weeklyDistanceKm,
             weeklyActiveMinutes = weeklyActiveMinutes,
-            lazyDaysPerWeek = lazyDaysPerWeek
+            lazyDaysPerWeek = lazyDaysPerWeek,
+            moveReminderEnabled = moveReminderEnabled,
+            moveReminderIntervalMin = moveReminderIntervalMin,
+            voiceNavEnabled = voiceNavEnabled
         )
     }
 
@@ -149,6 +155,9 @@ class MilesRepository(
             .putFloat("weekly_distance_km", newSettings.weeklyDistanceKm.toFloat())
             .putInt("weekly_active_minutes", newSettings.weeklyActiveMinutes)
             .putInt("lazy_days_per_week", newSettings.lazyDaysPerWeek)
+            .putBoolean("move_reminder_enabled", newSettings.moveReminderEnabled)
+            .putInt("move_reminder_interval_min", newSettings.moveReminderIntervalMin)
+            .putBoolean("voice_nav_enabled", newSettings.voiceNavEnabled)
             .apply()
     }
 
@@ -557,5 +566,84 @@ class MilesRepository(
         }
     } catch (_: Exception) {
         emptyList()
+    }
+
+    // ----- Backup / restore support (all real data, no placeholders) -----
+    suspend fun allSessionsNow(): List<WorkoutSessionEntity> = withContext(Dispatchers.IO) {
+        sessionDao.getAllSessionsNow()
+    }
+
+    suspend fun allDaysNow(): List<DayStatsEntity> = withContext(Dispatchers.IO) {
+        dayStatsDao.getAllDays()
+    }
+
+    suspend fun petNow(): PetEntity? = withContext(Dispatchers.IO) {
+        petDao.getPet()
+    }
+
+    suspend fun trainingNow(): TrainingProgressEntity? = withContext(Dispatchers.IO) {
+        trainingDao.getProgress()
+    }
+
+    suspend fun replaceSessions(sessions: List<WorkoutSessionEntity>) {
+        withContext(Dispatchers.IO) {
+            sessionDao.clearSessions()
+            sessionDao.insertAll(sessions)
+        }
+    }
+
+    suspend fun replacePins(pins: List<SavedPinEntity>) {
+        withContext(Dispatchers.IO) {
+            pinDao.clearPins()
+            pinDao.insertAll(pins)
+        }
+    }
+
+    suspend fun replaceDays(days: List<DayStatsEntity>) {
+        withContext(Dispatchers.IO) {
+            dayStatsDao.clearDays()
+            dayStatsDao.insertAll(days)
+        }
+    }
+
+    suspend fun replaceRoutes(routes: List<SavedRouteEntity>) {
+        withContext(Dispatchers.IO) {
+            routeDao.clearRoutes()
+            routeDao.insertAll(routes)
+        }
+    }
+
+    suspend fun replaceTraining(progress: TrainingProgressEntity?) {
+        withContext(Dispatchers.IO) {
+            trainingDao.clearProgress()
+            if (progress != null) trainingDao.saveProgress(progress)
+        }
+    }
+
+    suspend fun replacePet(pet: PetEntity?) {
+        withContext(Dispatchers.IO) {
+            petDao.clearPet()
+            if (pet != null) petDao.savePet(pet)
+        }
+    }
+
+    fun dumpPrefs(): Map<String, Any?> = prefs.all
+
+    fun restorePrefs(values: Map<String, Any>) {
+        val editor = prefs.edit()
+        values.forEach { (key, value) ->
+            when (value) {
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Double -> editor.putFloat(key, value.toFloat())
+                is String -> editor.putString(key, value)
+                else -> editor.putString(key, value.toString())
+            }
+        }
+        editor.apply()
+        // Refresh the settings flow from the restored values
+        _settings.value = loadSettingsFromPrefs()
     }
 }
