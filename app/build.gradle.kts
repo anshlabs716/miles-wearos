@@ -56,6 +56,10 @@ android {
     }
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
 dependencies {
     // Wear Compose
     implementation("androidx.wear.compose:compose-material3:1.0.0-alpha30")

@@ -251,12 +251,16 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                 WaterLockScreen(
                     onUnlock = { navController.popBackStack() }
                 )
-                }
-
-                WearNavigationControls(navController = navController)
             }
+            }
+
+            WearNavigationControls(
+                navController = navController,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
+}
 }
 
 @Composable
