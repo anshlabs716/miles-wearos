@@ -79,7 +79,8 @@ fun DashboardScreen(
     onOpenPet: () -> Unit = {},
     onOpenRoutes: () -> Unit = {},
     onOpenTraining: () -> Unit = {},
-    onOpenExport: () -> Unit = {}
+    onOpenExport: () -> Unit = {},
+    onOpenBle: () -> Unit = {}
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -314,7 +315,11 @@ fun DashboardScreen(
                         // Calories
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(text = "$todayCalories kcal", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CoralFlame)
-                            Text(text = "Burned", fontSize = 8.sp, color = MutedGray)
+                            Text(
+                                text = if (settings.calorieGoalKcal > 0) "of ${settings.calorieGoalKcal} goal" else "Burned",
+                                fontSize = 8.sp,
+                                color = MutedGray
+                            )
                         }
                         // Heart Rate
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -827,6 +832,39 @@ fun DashboardScreen(
                     secondaryLabel = {
                         Text(
                             text = "GPX • CSV • JSON • Full backup",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: BLE Sensors
+            item {
+                Chip(
+                    onClick = onOpenBle,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF1A2A38),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "📡", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "BLE Sensors",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "HR strap • cadence • battery",
                             fontSize = 9.sp,
                             color = MutedGray
                         )

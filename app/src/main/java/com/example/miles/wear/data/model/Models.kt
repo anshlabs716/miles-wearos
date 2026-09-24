@@ -150,7 +150,9 @@ data class WearSettings(
     // Wave B: reminders + voice
     val moveReminderEnabled: Boolean = false,
     val moveReminderIntervalMin: Int = 60,
-    val voiceNavEnabled: Boolean = true
+    val voiceNavEnabled: Boolean = true,
+    // Wave C: calorie goal (daily kcal target, 0 = off)
+    val calorieGoalKcal: Int = 500
 )
 
 enum class HeartRateZone(
@@ -183,6 +185,7 @@ data class LiveHeartRate(
     val bpm: Int = 0,
     val accuracy: Int = 0, // 0: No Contact, 1: Unreliable, 2: Low, 3: Medium, 4: High
     val isAvailable: Boolean = true,
+    val isFromExternal: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -208,6 +211,17 @@ data class PhoneMirroredMetrics(
     val heartRate: Int = 0,
     val isPhoneActive: Boolean = false
 )
+
+/** One auto-split (per km/mi) captured from real distance + elapsed time. */
+data class WorkoutSplit(
+    val index: Int,
+    val cumulativeMeters: Double,
+    val elapsedSeconds: Long
+) {
+    /** Real pace for this split in seconds per km. */
+    fun paceSecondsPerKm(): Double =
+        if (cumulativeMeters <= 0.0) 0.0 else elapsedSeconds / (cumulativeMeters / 1000.0)
+}
 
 data class DailyActivityStats(
     val steps: Int = 0,

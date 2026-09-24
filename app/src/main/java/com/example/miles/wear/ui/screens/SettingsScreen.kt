@@ -198,6 +198,38 @@ fun SettingsScreen(
                 )
             }
 
+            item {
+                Chip(
+                    onClick = {
+                        val options = listOf(0, 300, 400, 500, 750, 1000)
+                        val next = options[(options.indexOf(settings.calorieGoalKcal) + 1) % options.size]
+                        repository.updateSettings(settings.copy(calorieGoalKcal = next))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.calorieGoalKcal > 0) Color(0xFF301A20) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = if (settings.calorieGoalKcal > 0) "Calorie Goal: ${settings.calorieGoalKcal} kcal/day" else "Calorie Goal: Off",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (settings.calorieGoalKcal > 0) CoralFlame else Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Tap to cycle (off, 300–1000). Dashboard shows progress.",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
             // Section: Themes & Visual Customization
             item {
                 Text(

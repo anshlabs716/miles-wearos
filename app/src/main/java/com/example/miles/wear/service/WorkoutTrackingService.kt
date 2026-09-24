@@ -27,6 +27,7 @@ import com.example.miles.wear.data.model.WorkoutMode
 import com.example.miles.wear.data.model.WorkoutPlan
 import com.example.miles.wear.data.model.WorkoutState
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.engine.Splitter
 import com.example.miles.wear.engine.WorkoutPlanHub
 import com.example.miles.wear.util.HapticHelper
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +66,8 @@ class WorkoutTrackingService : Service() {
     private var sessionStartTime = 0L
     private var elapsedSeconds = 0L
     private var lastVibratedKilometer = 0
+    private val splits = mutableListOf<com.example.miles.wear.data.model.WorkoutSplit>()
+    private var lastSplitMarkMeters = 0.0
     private var currentSessionId: Long = 0
     private var autoPauseJob: Job? = null
     private var slowTicks = 0
@@ -133,6 +136,8 @@ class WorkoutTrackingService : Service() {
         sessionStartTime = System.currentTimeMillis()
         elapsedSeconds = 0L
         lastVibratedKilometer = 0
+        splits.clear()
+        lastSplitMarkMeters = 0.0
 
         // Haptic feedback for workout start
         if (repository.settings.value.workoutStartHaptic) {
@@ -216,7 +221,8 @@ class WorkoutTrackingService : Service() {
                     distanceMeters = finalMetrics.distanceMeters,
                     elevationGainMeters = finalMetrics.elevationGainMeters,
                     isSyncedToPhone = false,
-                    routeGeoJson = routeJson
+                    routeGeoJson = routeJson,
+                    splitsJson = Splitter.encode(splits)
                 )
                 repository.updateWorkoutSession(updated)
                 // Accumulate today's real totals (drives step/activity streaks)
@@ -329,6 +335,15 @@ class WorkoutTrackingService : Service() {
                     lastVibratedKilometer = currentKm
                     if (repository.settings.value.splitHaptic) {
                         vibratePattern(longArrayOf(0, 200, 150, 200, 150, 300))
+                    }
+                }
+
+                // Capture a real per-km / per-mi split every time the tracked
+                // distance crosses the next interval boundary.
+                if (metrics.distanceMeters > 0.0) {
+                    val interval = if (repository.settings.value.unit == com.example.miles.wear.data.model.DistanceUnit.METRIC) 1000.0 else 1609.344
+                    if (Splitter.append(metrics.distanceMeters, elapsedSeconds, lastSplitMarkMeters, splits, interval)) {
+                        lastSplitMarkMeters = splits.last().cumulativeMeters
                     }
                 }
 

@@ -126,6 +126,7 @@ object MilesBackupManager {
         .put("elevationGainMeters", s.elevationGainMeters)
         .put("isSyncedToPhone", s.isSyncedToPhone)
         .put("routeGeoJson", s.routeGeoJson)
+        .put("splitsJson", s.splitsJson)
 
     private fun sessionFromJson(o: JSONObject?): WorkoutSessionEntity? {
         if (o == null) return null
@@ -142,7 +143,8 @@ object MilesBackupManager {
             distanceMeters = o.optDouble("distanceMeters", 0.0),
             elevationGainMeters = o.optDouble("elevationGainMeters", 0.0),
             isSyncedToPhone = o.optBoolean("isSyncedToPhone", false),
-            routeGeoJson = o.optString("routeGeoJson", "")
+            routeGeoJson = o.optString("routeGeoJson", ""),
+            splitsJson = o.optString("splitsJson", "")
         )
     }
 
@@ -174,6 +176,7 @@ object MilesBackupManager {
         .put("distanceMeters", d.distanceMeters)
         .put("activeSeconds", d.activeSeconds)
         .put("calories", d.calories)
+        .put("restingBpm", d.restingBpm)
 
     private fun dayFromJson(o: JSONObject?): DayStatsEntity? {
         if (o == null) return null
@@ -182,7 +185,8 @@ object MilesBackupManager {
             steps = o.optInt("steps", 0),
             distanceMeters = o.optDouble("distanceMeters", 0.0),
             activeSeconds = o.optLong("activeSeconds", 0),
-            calories = o.optInt("calories", 0)
+            calories = o.optInt("calories", 0),
+            restingBpm = o.optInt("restingBpm", 0)
         )
     }
 

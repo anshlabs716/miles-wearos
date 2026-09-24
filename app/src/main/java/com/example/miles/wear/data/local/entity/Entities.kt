@@ -29,7 +29,9 @@ data class WorkoutSessionEntity(
     val distanceMeters: Double = 0.0,
     val elevationGainMeters: Double = 0.0,
     val isSyncedToPhone: Boolean = false,
-    val routeGeoJson: String = ""
+    val routeGeoJson: String = "",
+    /** Auto-split boundaries (per km or mi) captured during the workout. */
+    val splitsJson: String = ""
 )
 
 @Entity(tableName = "saved_pins")
@@ -51,7 +53,9 @@ data class DayStatsEntity(
     val steps: Int = 0,
     val distanceMeters: Double = 0.0,
     val activeSeconds: Long = 0L,
-    val calories: Int = 0
+    val calories: Int = 0,
+    /** Lowest sustained HR observed while idle that day (real sensor data). */
+    val restingBpm: Int = 0
 )
 
 /** The user's adopted fitness companion (single row). */
