@@ -236,7 +236,11 @@ data class PhoneConnectionStatus(
     val isConnected: Boolean = false,
     val phoneNodeName: String = "",
     val phoneNodeId: String = "",
-    val pendingQueueCount: Int = 0
+    val pendingQueueCount: Int = 0,
+    // MILES phone app detection
+    val localAppInstalled: Boolean = false,
+    val localAppVersion: String = "",
+    val nearbyPeerCount: Int = 0
 )
 
 /** Adoptable fitness companions (fed by real steps, like MILES phone). */
