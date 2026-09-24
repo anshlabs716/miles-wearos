@@ -1,15 +1,13 @@
 package com.example.miles.wear.network
 
 import android.content.Context
+import android.os.BatteryManager
+import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import com.example.miles.wear.data.model.PhoneConnectionStatus
 import com.example.miles.wear.data.model.PhoneMirroredMetrics
 import com.example.miles.wear.data.repository.MilesRepository
-import com.google.android.gms.wearable.CapabilityClient
-import com.google.android.gms.wearable.MessageClient
-import com.google.android.gms.wearable.MessageEvent
-import com.google.android.gms.wearable.Node
-import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,30 +18,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Phone connection over the local network — **no Google Play Services**.
+ *
+ * Discovery + messaging run through [LanTransport] (UDP beacons + TCP JSON
+ * frames on the same paths the old data-layer messages used), so:
+ *  - "Phone Connected" means a real MILES phone app on the same WiFi
+ *  - mirrored workouts, HR/cadence streaming and the offline queue all work
+ * The public API is unchanged, so every screen keeps working untouched.
+ */
 class PhoneMessagingManager(
     private val context: Context,
     private val repository: MilesRepository
-) : MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    private val messageClient: MessageClient = Wearable.getMessageClient(context)
-    private val capabilityClient: CapabilityClient = Wearable.getCapabilityClient(context)
-    private val nodeClient = Wearable.getNodeClient(context)
-
-    companion object {
-        const val CAPABILITY_WEAR_TRACKER = "miles_wear_tracker"
-        const val CAPABILITY_PHONE_APP = "miles_phone_app"
-        const val PATH_HR_STREAM = "/miles/sensors/hr"
-        const val PATH_CADENCE_STREAM = "/miles/sensors/cadence"
-        const val PATH_WORKOUT_CONTROL = "/miles/workout/control"
-        const val PATH_PHONE_METRICS = "/miles/metrics/live"
-        const val PATH_FLUSH_QUEUE = "/miles/queue/flush"
-    }
 
     private val _connectionStatus = MutableStateFlow(PhoneConnectionStatus())
     val connectionStatus: StateFlow<PhoneConnectionStatus> = _connectionStatus.asStateFlow()
@@ -54,208 +46,192 @@ class PhoneMessagingManager(
     private val _controlActions = MutableSharedFlow<Pair<String, String>>() // action, type
     val controlActions: SharedFlow<Pair<String, String>> = _controlActions.asSharedFlow()
 
-    private var targetPhoneNode: Node? = null
+    private var transport: LanTransport? = null
+
+    companion object {
+        // Kept as aliases so nothing else has to change
+        const val PATH_HR_STREAM = LanProtocol.PATH_HR_STREAM
+        const val PATH_CADENCE_STREAM = LanProtocol.PATH_CADENCE_STREAM
+        const val PATH_WORKOUT_CONTROL = LanProtocol.PATH_WORKOUT_CONTROL
+        const val PATH_PHONE_METRICS = LanProtocol.PATH_PHONE_METRICS
+        const val PATH_FLUSH_QUEUE = LanProtocol.PATH_FLUSH_QUEUE
+    }
 
     fun initialize() {
-        messageClient.addListener(this)
-        capabilityClient.addListener(this, CAPABILITY_WEAR_TRACKER)
+        if (transport != null) return
+        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+        val appVersion = runCatching {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "1.0"
 
-        scope.launch {
-            try {
-                // Advertise capability so phone app detects watch
-                capabilityClient.addLocalCapability(CAPABILITY_WEAR_TRACKER).await()
-                refreshConnectedNodes()
-            } catch (e: Exception) {
-                Log.e("PhoneMessagingManager", "Error initializing capability", e)
-            }
-        }
+        val lan = LanTransport(
+            role = LanProtocol.ROLE_WEAR,
+            selfId = "wear-$androidId",
+            selfName = (Build.MANUFACTURER + " " + Build.MODEL).trim(),
+            selfModel = Build.MODEL ?: "Wear OS",
+            appVersion = appVersion,
+            scope = scope,
+            batteryProvider = { currentBatteryPercent() },
+            statusProvider = {
+                runCatching {
+                    com.example.miles.wear.service.WorkoutTrackingService.isWorkoutActive
+                }.getOrDefault(false).toString()
+            },
+            onMessage = { path, payload -> handleMessage(path, payload) },
+            onPeersChanged = { publishStatus() }
+        )
+        transport = lan
+        lan.start()
+        publishStatus()
     }
 
     fun cleanup() {
-        messageClient.removeListener(this)
-        capabilityClient.removeListener(this)
+        transport?.stop()
+        transport = null
     }
 
-    suspend fun refreshConnectedNodes() {
-        try {
-            val nodes = nodeClient.connectedNodes.await()
-            val phoneNode = nodes.firstOrNull() // nearest phone/watch node as messaging target
-            targetPhoneNode = phoneNode
+    /** Real battery percent of this watch (or -1 when unavailable). */
+    private fun currentBatteryPercent(): Int = runCatching {
+        val intent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+    }.getOrDefault(-1)
 
-            // Do any reachable nodes run the MILES phone app (miles_phone_app capability)?
-            var capabilityCount = 0
-            try {
-                val phoneCap = capabilityClient
-                    .getCapability(CAPABILITY_PHONE_APP, CapabilityClient.FILTER_REACHABLE)
-                    .await()
-                capabilityCount = phoneCap.nodes.size
-            } catch (_: Exception) {
-                // capability lookup not available — node-only detection still works
-            }
+    // ---------- status ----------
 
-            _connectionStatus.value = PhoneConnectionStatus(
-                isConnected = phoneNode != null,
-                phoneNodeName = phoneNode?.displayName ?: "",
-                phoneNodeId = phoneNode?.id ?: "",
-                // MILES phone app detection — local + nearby
-                localAppInstalled = PhoneAppDetector.localAppInstalled(context),
-                localAppVersion = PhoneAppDetector.localAppVersion(context) ?: "",
-                nearbyCapabilityCount = capabilityCount
-            )
-
-            Log.i(
-                "MilesAppDetect",
-                "scan → nodes=${nodes.size} target=${phoneNode?.displayName ?: "none"} " +
-                    "milesPhoneNearby=$capabilityCount " +
-                    "localInstalled=${_connectionStatus.value.localAppInstalled} " +
-                    "localVersion=${_connectionStatus.value.localAppVersion}"
-            )
-
-            if (phoneNode != null) {
-                // Auto flush offline buffered queue
-                flushOfflineQueue()
-            }
-        } catch (e: Exception) {
-            Log.e("PhoneMessagingManager", "Error checking nodes", e)
-            _connectionStatus.value = PhoneConnectionStatus(
-                isConnected = false,
-                localAppInstalled = PhoneAppDetector.localAppInstalled(context),
-                localAppVersion = PhoneAppDetector.localAppVersion(context) ?: ""
-            )
+    private fun publishStatus() {
+        val lan = transport
+        val phonePeers = lan?.peersNow()?.filter { it.role == LanProtocol.ROLE_PHONE }.orEmpty()
+        val phone = phonePeers.maxByOrNull { it.name }
+        _connectionStatus.value = PhoneConnectionStatus(
+            isConnected = phone != null,
+            phoneNodeName = phone?.name ?: "",
+            phoneNodeId = phone?.id ?: "",
+            // MILES phone app detection — local (package) + nearby (LAN peer)
+            localAppInstalled = PhoneAppDetector.localAppInstalled(context),
+            localAppVersion = PhoneAppDetector.localAppVersion(context) ?: "",
+            nearbyPeerCount = phonePeers.size
+        )
+        if (phone != null) {
+            // Auto flush offline buffered queue when the phone shows up
+            scope.launch { flushOfflineQueue() }
         }
     }
 
-    override fun onCapabilityChanged(capabilityInfo: com.google.android.gms.wearable.CapabilityInfo) {
-        scope.launch {
-            refreshConnectedNodes()
-        }
+    /** Kept name for API compatibility — now refreshes LAN peers. */
+    fun refreshConnectedNodes() {
+        publishStatus()
+        Log.i(
+            LanTransport.TAG,
+            "scan → lanPeers=${transport?.peersNow()?.size ?: 0} " +
+                "phone=${_connectionStatus.value.phoneNodeName.ifBlank { "none" }} " +
+                "localInstalled=${_connectionStatus.value.localAppInstalled} " +
+                "localVersion=${_connectionStatus.value.localAppVersion}"
+        )
     }
 
-    override fun onMessageReceived(messageEvent: MessageEvent) {
-        val path = messageEvent.path
-        val dataStr = String(messageEvent.data, Charsets.UTF_8)
+    // ---------- inbound ----------
 
+    private fun handleMessage(path: String, payload: JSONObject) {
         when (path) {
-            PATH_PHONE_METRICS -> {
-                try {
-                    val json = JSONObject(dataStr)
-                    val sec = json.optLong("sec", 0L)
-                    val meters = json.optDouble("m", 0.0)
-                    val cal = json.optInt("cal", 0)
-                    val hr = json.optInt("hr", 0)
-                    _mirroredMetrics.value = PhoneMirroredMetrics(
-                        seconds = sec,
-                        meters = meters,
-                        calories = cal,
-                        heartRate = hr,
-                        isPhoneActive = true
-                    )
-                } catch (e: Exception) {
-                    Log.e("PhoneMessagingManager", "Error parsing phone metrics", e)
-                }
+            LanProtocol.PATH_PHONE_METRICS -> {
+                _mirroredMetrics.value = PhoneMirroredMetrics(
+                    seconds = payload.optLong("sec", 0L),
+                    meters = payload.optDouble("m", 0.0),
+                    calories = payload.optInt("cal", 0),
+                    heartRate = payload.optInt("hr", 0),
+                    isPhoneActive = true
+                )
             }
-            PATH_WORKOUT_CONTROL -> {
-                try {
-                    val json = JSONObject(dataStr)
-                    val action = json.optString("action", "")
-                    val type = json.optString("workoutType", "Run")
-                    scope.launch {
-                        _controlActions.emit(Pair(action, type))
-                    }
-                } catch (e: Exception) {
-                    Log.e("PhoneMessagingManager", "Error parsing workout control", e)
-                }
+            LanProtocol.PATH_WORKOUT_CONTROL -> {
+                val action = payload.optString("action", "")
+                val type = payload.optString("workoutType", "Run")
+                scope.launch { _controlActions.emit(Pair(action, type)) }
             }
+            LanProtocol.PATH_PING -> sendToPhone(LanProtocol.PATH_PONG, JSONObject().toString())
+            LanProtocol.PATH_SYNC_REQUEST -> scope.launch { flushOfflineQueue() }
+            LanProtocol.PATH_WATCH_SETTINGS -> Log.i(
+                LanTransport.TAG,
+                "watch settings from phone: ${payload}"
+            )
         }
     }
+
+    // ---------- outbound ----------
 
     fun broadcastHeartRate(bpm: Int, accuracy: Int) {
-        scope.launch {
-            val payload = JSONObject().apply {
-                put("bpm", bpm)
-                put("accuracy", accuracy)
-                put("timestamp", System.currentTimeMillis())
-            }.toString()
-
-            sendOrEnqueue(PATH_HR_STREAM, "HR", payload)
+        val payload = JSONObject().apply {
+            put("bpm", bpm)
+            put("accuracy", accuracy)
+            put("timestamp", System.currentTimeMillis())
         }
+        sendOrEnqueue(LanProtocol.PATH_HR_STREAM, "HR", payload.toString())
     }
 
     fun broadcastCadence(cadence: Int) {
-        scope.launch {
-            val payload = JSONObject().apply {
-                put("cadence", cadence)
-                put("timestamp", System.currentTimeMillis())
-            }.toString()
-
-            sendOrEnqueue(PATH_CADENCE_STREAM, "CADENCE", payload)
+        val payload = JSONObject().apply {
+            put("cadence", cadence)
+            put("timestamp", System.currentTimeMillis())
         }
+        sendOrEnqueue(LanProtocol.PATH_CADENCE_STREAM, "CADENCE", payload.toString())
     }
 
     fun sendWorkoutControl(action: String, workoutType: String) {
-        scope.launch {
-            val payload = JSONObject().apply {
-                put("action", action)
-                put("workoutType", workoutType)
-                put("source", "watch")
-                put("timestamp", System.currentTimeMillis())
-            }.toString()
+        val payload = JSONObject().apply {
+            put("action", action)
+            put("workoutType", workoutType)
+            put("source", "watch")
+            put("timestamp", System.currentTimeMillis())
+        }
+        sendOrEnqueue(LanProtocol.PATH_WORKOUT_CONTROL, "CONTROL", payload.toString())
+    }
 
-            sendOrEnqueue(PATH_WORKOUT_CONTROL, "CONTROL", payload)
+    private fun sendToPhone(path: String, payloadJson: String) {
+        scope.launch {
+            val ok = transport?.send(LanProtocol.ROLE_PHONE, path, payloadJson) == true
+            if (!ok) repository.enqueueTelemetry("CONTROL", path, payloadJson)
         }
     }
 
-    private suspend fun sendOrEnqueue(path: String, type: String, payload: String) {
-        val node = targetPhoneNode
-        if (node != null && _connectionStatus.value.isConnected) {
-            try {
-                messageClient.sendMessage(node.id, path, payload.toByteArray(Charsets.UTF_8)).await()
-                return
-            } catch (e: Exception) {
-                Log.w("PhoneMessagingManager", "Failed to send message live, falling back to queue: ${e.message}")
+    private fun sendOrEnqueue(path: String, type: String, payload: String) {
+        scope.launch {
+            val sent = transport?.send(LanProtocol.ROLE_PHONE, path, payload) == true
+            if (!sent) {
+                // No phone on the LAN right now: keep it in Room for later
+                repository.enqueueTelemetry(type, path, payload)
             }
         }
-
-        // Offline or send failed: queue in Room
-        repository.enqueueTelemetry(type, path, payload)
     }
 
     suspend fun flushOfflineQueue() {
-        val node = targetPhoneNode ?: return
-        try {
-            val pending = repository.getPendingBatch(50)
-            if (pending.isEmpty()) return
+        val pending = repository.getPendingBatch(50)
+        if (pending.isEmpty()) return
 
-            val batchArray = JSONArray()
-            val idsToMark = mutableListOf<Long>()
+        val batchArray = JSONArray()
+        val idsToMark = mutableListOf<Long>()
+        pending.forEach { item ->
+            batchArray.put(JSONObject().apply {
+                put("id", item.id)
+                put("type", item.type)
+                put("path", item.path)
+                put("payload", item.payloadJson)
+                put("timestamp", item.timestamp)
+            })
+            idsToMark.add(item.id)
+        }
+        val batchPayload = JSONObject().apply {
+            put("items", batchArray)
+            put("count", batchArray.length())
+        }.toString()
 
-            pending.forEach { item ->
-                val obj = JSONObject().apply {
-                    put("id", item.id)
-                    put("type", item.type)
-                    put("path", item.path)
-                    put("payload", item.payloadJson)
-                    put("timestamp", item.timestamp)
-                }
-                batchArray.put(obj)
-                idsToMark.add(item.id)
-            }
-
-            val batchPayload = JSONObject().apply {
-                put("items", batchArray)
-                put("count", batchArray.length())
-            }.toString()
-
-            messageClient.sendMessage(
-                node.id,
-                PATH_FLUSH_QUEUE,
-                batchPayload.toByteArray(Charsets.UTF_8)
-            ).await()
-
+        val sent = transport?.send(LanProtocol.ROLE_PHONE, LanProtocol.PATH_FLUSH_QUEUE, batchPayload) == true
+        if (sent) {
             repository.markBatchSynced(idsToMark)
-            Log.i("PhoneMessagingManager", "Successfully flushed ${idsToMark.size} queued items to phone")
-        } catch (e: Exception) {
-            Log.e("PhoneMessagingManager", "Failed to flush offline queue", e)
+            Log.i(LanTransport.TAG, "flushed ${idsToMark.size} queued items to phone over LAN")
+        } else {
+            Log.i(LanTransport.TAG, "phone not reachable yet — ${pending.size} items stay queued")
         }
     }
 }

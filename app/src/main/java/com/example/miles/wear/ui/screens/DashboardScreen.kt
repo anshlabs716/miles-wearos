@@ -932,7 +932,7 @@ fun DashboardScreen(
                                 connection.localAppInstalled ->
                                     "📱 MILES app on this device · v${connection.localAppVersion}"
                                 connection.isConnected ->
-                                    "📡 Phone Connected (${connection.phoneNodeName})"
+                                    "📡 MILES phone on WiFi (${connection.phoneNodeName})"
                                 else -> "Standalone Mode (Tap to sync)"
                             },
                             fontSize = 9.sp,
@@ -941,11 +941,11 @@ fun DashboardScreen(
                             textAlign = TextAlign.Left
                         )
                     }
-                    // Phone app reachable over the wear channel (not just installed locally)
-                    if (connection.nearbyCapabilityCount > 0 && !connection.localAppInstalled) {
+                        // Phone app reachable over the local network (not just installed locally)
+                    if (connection.nearbyPeerCount > 0 && !connection.localAppInstalled) {
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "📡 MILES phone app nearby · ${connection.nearbyCapabilityCount} reachable",
+                            text = "📡 MILES phone on WiFi · ${connection.nearbyPeerCount} nearby",
                             fontSize = 8.sp,
                             color = NeonCyan
                         )
