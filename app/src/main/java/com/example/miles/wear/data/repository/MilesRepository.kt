@@ -4,11 +4,16 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.example.miles.wear.data.local.dao.QueueDao
 import com.example.miles.wear.data.local.dao.WorkoutSessionDao
+import com.example.miles.wear.data.local.dao.SavedPinDao
+import com.example.miles.wear.data.local.dao.DayStatsDao
 import com.example.miles.wear.data.local.entity.QueueItemEntity
+import com.example.miles.wear.data.local.entity.SavedPinEntity
+import com.example.miles.wear.data.local.entity.DayStatsEntity
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.DistanceUnit
 import com.example.miles.wear.data.model.HudLayoutMode
 import com.example.miles.wear.data.model.PrimaryMetricType
+import com.example.miles.wear.data.model.RecordsSummary
 import com.example.miles.wear.data.model.ThemeAccent
 import com.example.miles.wear.data.model.WearSettings
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +26,9 @@ import kotlinx.coroutines.withContext
 class MilesRepository(
     context: Context,
     private val queueDao: QueueDao,
-    private val sessionDao: WorkoutSessionDao
+    private val sessionDao: WorkoutSessionDao,
+    private val pinDao: SavedPinDao,
+    private val dayStatsDao: DayStatsDao
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("miles_wear_prefs", Context.MODE_PRIVATE)
 
@@ -160,6 +167,113 @@ class MilesRepository(
     suspend fun getLatestWorkout(): WorkoutSessionEntity? {
         return withContext(Dispatchers.IO) {
             sessionDao.getLatestSession()
+        }
+    }
+
+    // ----- Saved pins -----
+    val allPins: Flow<List<SavedPinEntity>> = pinDao.getAllPins()
+
+    suspend fun getPinsNow(): List<SavedPinEntity> = withContext(Dispatchers.IO) {
+        pinDao.getAllPinsNow()
+    }
+
+    suspend fun addPin(name: String, lat: Double, lon: Double, note: String = "") {
+        withContext(Dispatchers.IO) {
+            pinDao.insertPin(SavedPinEntity(name = name, latitude = lat, longitude = lon, note = note))
+        }
+    }
+
+    suspend fun deletePin(id: Long) {
+        withContext(Dispatchers.IO) {
+            pinDao.deletePin(id)
+        }
+    }
+
+    // ----- Daily stats + streaks -----
+    /** Adds today's activity into the day_stats row (used at workout finish). */
+    suspend fun recordDayActivity(distanceMeters: Double, steps: Int, activeSeconds: Long, calories: Int) {
+        withContext(Dispatchers.IO) {
+            val key = dateKey(System.currentTimeMillis())
+            val existing = dayStatsDao.getDay(key)
+            dayStatsDao.upsertDay(
+                DayStatsEntity(
+                    dateKey = key,
+                    steps = (existing?.steps ?: 0) + steps,
+                    distanceMeters = (existing?.distanceMeters ?: 0.0) + distanceMeters,
+                    activeSeconds = (existing?.activeSeconds ?: 0L) + activeSeconds,
+                    calories = (existing?.calories ?: 0) + calories
+                )
+            )
+        }
+    }
+
+    /** Real streaks + personal records from saved workout history and day stats. */
+    suspend fun computeRecords(): RecordsSummary = withContext(Dispatchers.IO) {
+        val sessions = sessionDao.getAllSessionsNow()
+        val days = dayStatsDao.getAllDays()
+
+        val byDay = sessions.groupBy { dateKey(it.startTime) }
+        val workDays = byDay.filterValues { it.isNotEmpty() }.keys
+        val distanceDays = byDay.entries.filter { (_, list) -> list.sumOf { s -> s.distanceMeters } > 5.0 }
+            .map { it.key }
+            .toSet()
+        val stepDays = days.filter { it.steps > 0 }.map { it.dateKey }.toSet()
+
+        val totalWorkouts = sessions.size
+        val totalDistance = sessions.sumOf { it.distanceMeters }
+        val longestDist = sessions.maxOfOrNull { it.distanceMeters } ?: 0.0
+        val longestDur = sessions.maxOfOrNull { it.durationSeconds } ?: 0L
+        val mostSteps = sessions.maxOfOrNull { it.totalSteps } ?: 0
+        val maxElev = sessions.maxOfOrNull { it.elevationGainMeters } ?: 0.0
+
+        // Fastest pace = smallest (durationSeconds / distanceKm) for sessions with distance
+        val fastestPace = sessions
+            .filter { it.distanceMeters >= 50.0 && it.durationSeconds > 0 }
+            .minOfOrNull { it.durationSeconds.toDouble() / (it.distanceMeters / 1000.0) } ?: 0.0
+
+        RecordsSummary(
+            workoutStreak = countStreak(workDays),
+            distanceStreak = countStreak(distanceDays),
+            stepStreak = countStreak(stepDays),
+            longestDistanceMeters = longestDist,
+            longestDurationSeconds = longestDur,
+            fastestPace = fastestPace,
+            mostStepsInWorkout = mostSteps,
+            maxElevationGainMeters = maxElev,
+            totalWorkouts = totalWorkouts,
+            totalDistanceMeters = totalDistance
+        )
+    }
+
+    private fun countStreak(days: Set<String>): Int {
+        if (days.isEmpty()) return 0
+        val daySet = days.mapNotNull { localDateToEpochDay(it) }.toMutableSet()
+        if (daySet.isEmpty()) return 0
+
+        // A streak counts from the most recent day; today can be the start
+        // or continue from yesterday if today has no entry yet.
+        val today = java.time.LocalDate.now().toEpochDay()
+        var cursor = if (daySet.contains(today)) today else today - 1
+        var streak = 0
+        while (daySet.contains(cursor)) {
+            streak++
+            cursor--
+        }
+        return streak
+    }
+
+    private fun dateKey(timeMillis: Long): String {
+        val dt = java.time.Instant.ofEpochMilli(timeMillis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+        return dt.toString() // yyyy-MM-dd
+    }
+
+    private fun localDateToEpochDay(key: String): Long? {
+        return try {
+            java.time.LocalDate.parse(key).toEpochDay()
+        } catch (_: Exception) {
+            null
         }
     }
 

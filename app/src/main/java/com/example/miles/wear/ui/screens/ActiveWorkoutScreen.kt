@@ -47,10 +47,12 @@ import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.data.model.GpsPoint
 import com.example.miles.wear.data.model.GpsStatus
+import com.example.miles.wear.data.model.GoalType
 import com.example.miles.wear.data.model.HeartRateZone
 import com.example.miles.wear.data.model.HudLayoutMode
 import com.example.miles.wear.data.model.PrimaryMetricType
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.engine.WorkoutPlanHub
 import com.example.miles.wear.service.WorkoutTrackingService
 import com.example.miles.wear.ui.components.HeartRateZoneRing
 import com.example.miles.wear.ui.components.RouteMapView
@@ -66,6 +68,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ActiveWorkoutScreen(
     workoutType: WorkoutType,
+    plan: com.example.miles.wear.data.model.WorkoutPlan = com.example.miles.wear.data.model.WorkoutPlan(),
     onFinishWorkout: () -> Unit,
     onDiscardWorkout: () -> Unit,
     onEnableWaterLock: () -> Unit
@@ -84,6 +87,9 @@ fun ActiveWorkoutScreen(
     val gpsStatus by sensorTracker.gpsStatus.collectAsStateWithLifecycle()
     val isLowPower by sensorTracker.isLowPowerMode.collectAsStateWithLifecycle()
     val recordedRoute by sensorTracker.recordedRoute.collectAsStateWithLifecycle()
+    val goalProgress by WorkoutPlanHub.goalProgress.collectAsStateWithLifecycle()
+    val intervalPhase by WorkoutPlanHub.intervalPhase.collectAsStateWithLifecycle()
+    val intervalDone by WorkoutPlanHub.intervalDone.collectAsStateWithLifecycle()
 
     var isPaused by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -91,11 +97,9 @@ fun ActiveWorkoutScreen(
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
-        val serviceIntent = Intent(context, WorkoutTrackingService::class.java).apply {
-            action = WorkoutTrackingService.ACTION_START
-            putExtra(WorkoutTrackingService.EXTRA_WORKOUT_TYPE, workoutType.name)
-        }
-        context.startForegroundService(serviceIntent)
+        context.startForegroundService(
+            WorkoutTrackingService.startWorkoutIntent(context, workoutType, plan)
+        )
     }
 
     val elapsedMinutes = metrics.elapsedSeconds / 60
@@ -229,6 +233,105 @@ fun ActiveWorkoutScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = gpsColor
                     )
+                }
+            }
+
+            // Goal / Interval plan HUD (real progress from the tracking engine)
+            if (plan.mode != com.example.miles.wear.data.model.WorkoutMode.FREE) {
+                item {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (plan.mode == com.example.miles.wear.data.model.WorkoutMode.GOAL) Color(0xFF0E2A1F) else Color(0xFF241A06))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        if (plan.mode == com.example.miles.wear.data.model.WorkoutMode.GOAL) {
+                            val goalLabel = when (plan.goalType) {
+                                GoalType.DISTANCE -> "${formatNum(plan.goalValue)} km"
+                                GoalType.DURATION -> "${plan.goalValue.toInt()} min"
+                                GoalType.CALORIES -> "${plan.goalValue.toInt()} kcal"
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "🎯 GOAL $goalLabel",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = VividGreen
+                                )
+                                Text(
+                                    text = "${(goalProgress * 100).toInt()}%",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = VividGreen
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .background(Color(0xFF1B3A2C))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(goalProgress)
+                                        .height(3.dp)
+                                        .background(VividGreen)
+                                )
+                            }
+                        } else {
+                            val phase = intervalPhase
+                            if (phase == null) {
+                                Text(
+                                    text = if (intervalDone) "🏁 INTERVAL COMPLETE" else "🔁 INTERVAL — WARM UP",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (intervalDone) ElectricAmber else VividGreen
+                                )
+                            } else {
+                                val title = when {
+                                    phase.isCooldown -> "COOLDOWN"
+                                    phase.isWork -> "WORK"
+                                    else -> "REST"
+                                }
+                                val color = if (phase.isWork) VividGreen else ElectricAmber
+                                val phaseStr = String.format(
+                                    "%02d:%02d / %02d:%02d",
+                                    phase.phaseElapsedSeconds / 60, phase.phaseElapsedSeconds % 60,
+                                    phase.phaseTotalSeconds / 60, phase.phaseTotalSeconds % 60
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "🔁 $title",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = color
+                                    )
+                                    Text(
+                                        text = "SET ${phase.setNumber}/${phase.totalSets}",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MutedGray
+                                    )
+                                }
+                                Text(
+                                    text = phaseStr,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = color
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -653,4 +756,10 @@ fun ActiveWorkoutScreen(
             }
         }
     }
+}
+
+/** Formats a decimal amount without trailing zeros (e.g. 10.0 -> "10", 5.5 -> "5.5"). */
+private fun formatNum(value: Double): String {
+    if (value == value.toLong().toDouble()) return value.toLong().toString()
+    return String.format("%.1f", value)
 }

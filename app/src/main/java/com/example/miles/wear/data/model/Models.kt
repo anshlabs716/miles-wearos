@@ -215,3 +215,97 @@ data class PhoneConnectionStatus(
     val phoneNodeId: String = "",
     val pendingQueueCount: Int = 0
 )
+
+/** How a workout is structured. */
+enum class WorkoutMode(val title: String) {
+    FREE("Free"),
+    GOAL("Goal"),
+    INTERVAL("Interval")
+}
+
+/** The tracked quantity for goal mode. */
+enum class GoalType(val title: String, val unit: String) {
+    DISTANCE("Distance", "km"),
+    DURATION("Duration", "min"),
+    CALORIES("Calories", "kcal")
+}
+
+/**
+ * Full workout plan carried from the setup screen into the tracking
+ * service. Encoded as a compact string for navigation arguments.
+ */
+data class WorkoutPlan(
+    val mode: WorkoutMode = WorkoutMode.FREE,
+    val goalType: GoalType = GoalType.DISTANCE,
+    val goalValue: Double = 0.0,   // km | minutes | kcal
+    val workSeconds: Int = 0,
+    val recoverySeconds: Int = 0,
+    val repetitions: Int = 0
+) {
+    fun encode(): String = when (mode) {
+        WorkoutMode.FREE -> "free"
+        WorkoutMode.GOAL -> "goal:${goalType.name}:$goalValue"
+        WorkoutMode.INTERVAL -> "interval:$workSeconds:$recoverySeconds:$repetitions"
+    }
+
+    companion object {
+        fun decode(raw: String?): WorkoutPlan {
+            if (raw.isNullOrBlank() || raw == "free") return WorkoutPlan()
+            val parts = raw.split(":")
+            return try {
+                when (parts[0]) {
+                    "goal" -> WorkoutPlan(
+                        mode = WorkoutMode.GOAL,
+                        goalType = GoalType.valueOf(parts[1]),
+                        goalValue = parts[2].toDouble().coerceAtLeast(0.0)
+                    )
+                    "interval" -> WorkoutPlan(
+                        mode = WorkoutMode.INTERVAL,
+                        workSeconds = parts.getOrNull(1)?.toInt()?.coerceIn(10, 3600) ?: 60,
+                        recoverySeconds = parts.getOrNull(2)?.toInt()?.coerceIn(0, 3600) ?: 30,
+                        repetitions = parts.getOrNull(3)?.toInt()?.coerceIn(1, 100) ?: 4
+                    )
+                    else -> WorkoutPlan()
+                }
+            } catch (_: Exception) {
+                WorkoutPlan()
+            }
+        }
+    }
+}
+
+/** Live phase state for interval workouts. */
+data class IntervalPhase(
+    val isWork: Boolean,        // true = work, false = rest/cooldown
+    val phaseElapsedSeconds: Long,
+    val phaseTotalSeconds: Long,
+    val setNumber: Int,
+    val totalSets: Int,
+    val isCooldown: Boolean = false
+)
+
+/** Aggregated streaks + personal records computed from real history. */
+data class RecordsSummary(
+    val workoutStreak: Int = 0,     // consecutive days with a workout
+    val distanceStreak: Int = 0,    // consecutive days with distance
+    val stepStreak: Int = 0,        // consecutive days with steps (from day stats)
+    val longestDistanceMeters: Double = 0.0,
+    val longestDurationSeconds: Long = 0L,
+    val fastestPace: Double = 0.0,  // seconds per km (lower = faster)
+    val mostStepsInWorkout: Int = 0,
+    val maxElevationGainMeters: Double = 0.0,
+    val totalWorkouts: Int = 0,
+    val totalDistanceMeters: Double = 0.0
+)
+
+/** Live turn-by-turn navigation state for the watch. */
+data class NavState(
+    val maneuver: String,          // "Turn left", "Continue", "Arrive"...
+    val streetName: String,
+    val distanceToNextMeters: Double,
+    val remainingMeters: Double,
+    val remainingMinutes: Long,
+    val isArrived: Boolean = false,
+    val isFetching: Boolean = false,
+    val hasRoute: Boolean = true
+)

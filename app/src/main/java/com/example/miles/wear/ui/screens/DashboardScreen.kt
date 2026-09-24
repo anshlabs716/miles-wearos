@@ -71,7 +71,8 @@ fun DashboardScreen(
     onOpenCompass: () -> Unit,
     onStartQuickWorkout: (WorkoutType) -> Unit,
     onOpenMirrored: () -> Unit,
-    onSelectSession: (Long) -> Unit
+    onSelectSession: (Long) -> Unit,
+    onOpenRecords: () -> Unit = {}
 ) {
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -566,6 +567,39 @@ fun DashboardScreen(
                     secondaryLabel = {
                         Text(
                             text = "${sessions.size} recorded sessions",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            // Quick Access: Records & Streaks
+            item {
+                Chip(
+                    onClick = onOpenRecords,
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF1A1408),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🏆", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Records & Streaks",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElectricAmber
+                            )
+                        }
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "PRs from real workout history",
                             fontSize = 9.sp,
                             color = MutedGray
                         )
