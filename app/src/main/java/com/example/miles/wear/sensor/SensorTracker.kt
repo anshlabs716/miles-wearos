@@ -42,11 +42,23 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     val isStepSensorPresent: Boolean = stepCounterSensor != null || stepDetectorSensor != null
     val isPressureSensorPresent: Boolean = pressureSensor != null
 
+    /** User's body weight (kg) — only used for real movement-based calorie estimates. */
+    @Volatile
+    var bodyWeightKg: Int = 70
+
     // Reactive State
     private val _liveHeartRate = MutableStateFlow(
         LiveHeartRate(isAvailable = isHeartRateSensorPresent)
     )
     val liveHeartRate: StateFlow<LiveHeartRate> = _liveHeartRate.asStateFlow()
+
+    // External BLE sensors (heart-rate strap / cadence) — override watch sensors
+    private val _externalHr = MutableStateFlow<Int?>(null)
+    val externalHr: StateFlow<Int?> = _externalHr.asStateFlow()
+    @Volatile private var externalCadenceRpm: Int? = null
+
+    /** True when an external HR source is driving the live heart rate. */
+    val isExternalHrActive: Boolean get() = _externalHr.value != null
 
     private val _liveMetrics = MutableStateFlow(
         LiveWorkoutMetrics(isHrAvailable = isHeartRateSensorPresent)
@@ -258,11 +270,49 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
         }
     }
 
+    /**
+     * Redirects live HR to an external BLE heart-rate strap. Passing null
+     * returns control to the watch's optical sensor.
+     */
+    fun setExternalHeartRate(bpm: Int?) {
+        _externalHr.value = bpm
+        if (bpm == null) {
+            // Keep last known internal reading visible.
+            return
+        }
+        if (bpm in 30..240) {
+            val reading = LiveHeartRate(
+                bpm = bpm,
+                accuracy = 3,
+                isAvailable = true,
+                isFromExternal = true,
+                timestamp = System.currentTimeMillis()
+            )
+            _liveHeartRate.value = reading
+            if (isTracking) {
+                val currentList = _hrHistory.value.toMutableList()
+                currentList.add(bpm)
+                _hrHistory.value = currentList
+                if (minBpm == 0 || bpm < minBpm) minBpm = bpm
+                if (bpm > maxBpm) maxBpm = bpm
+                avgBpm = currentList.average().toInt()
+            }
+            updateWorkoutMetrics()
+        }
+    }
+
+    /** External BLE cadence sensor (RPM). Null falls back to step-derived cadence. */
+    fun setExternalCadence(rpm: Int?) {
+        externalCadenceRpm = rpm
+    }
+
     override fun onSensorChanged(event: SensorEvent?) {
         if (event == null) return
 
         when (event.sensor.type) {
             Sensor.TYPE_HEART_RATE -> {
+                // External BLE strap wins over the watch's optical sensor.
+                if (_externalHr.value != null) return
                 val rawBpm = event.values.getOrNull(0)?.toInt() ?: 0
                 if (rawBpm > 0) {
                     val reading = LiveHeartRate(
@@ -372,14 +422,17 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     }
 
     fun tickTimer(elapsedSeconds: Long) {
-        val currentBpm = _liveHeartRate.value.bpm
-        val calBurnRatePerSec = when (HeartRateZone.fromBpm(currentBpm)) {
-            HeartRateZone.RESTING -> 0.02   // ~1.2 kcal/min
-            HeartRateZone.WARMUP -> 0.08    // ~4.8 kcal/min
-            HeartRateZone.AEROBIC -> 0.15   // ~9.0 kcal/min
-            HeartRateZone.THRESHOLD -> 0.22 // ~13.2 kcal/min
-            HeartRateZone.ANAEROBIC -> 0.28 // ~16.8 kcal/min
-            HeartRateZone.MAX -> 0.35       // ~21 kcal/min
+        val hr = _liveHeartRate.value.bpm
+        val hasRealHr = isHeartRateSensorPresent && hr > 0
+        val speed = lastLocation?.speed?.toDouble() ?: 0.0
+        val cadence = externalCadenceRpm ?: stepTimestamps.size
+
+        // Real heart rate is the best signal; without HR hardware we fall back to
+        // a MET estimate from real measured movement (speed / step cadence).
+        val calBurnRatePerSec = if (hasRealHr) {
+            CalorieEstimator.fromHeartRate(hr)
+        } else {
+            CalorieEstimator.fromMovement(speed, cadence, bodyWeightKg)
         }
         totalCaloriesBurned += calBurnRatePerSec
         updateWorkoutMetrics(elapsedSeconds)
@@ -388,7 +441,7 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     private fun updateWorkoutMetrics(elapsedSeconds: Long = _liveMetrics.value.elapsedSeconds) {
         val now = System.currentTimeMillis()
         pruneStepWindow(now)
-        val cadence = stepTimestamps.size
+        val cadence = externalCadenceRpm ?: stepTimestamps.size
 
         val elevGain = if (initialAltitude != 0.0 && currentAltitude > initialAltitude) {
             currentAltitude - initialAltitude
@@ -403,6 +456,7 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
             dailySteps = currentDailySteps,
             cadenceSpm = cadence,
             caloriesKcal = totalCaloriesBurned.toInt(),
+            caloriesEstimated = !(isHeartRateSensorPresent && _liveHeartRate.value.bpm > 0),
             distanceMeters = totalDistanceMeters,
             elevationGainMeters = elevGain,
             speedMps = lastLocation?.speed?.toDouble() ?: 0.0,

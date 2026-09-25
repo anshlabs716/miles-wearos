@@ -150,7 +150,11 @@ data class WearSettings(
     // Wave B: reminders + voice
     val moveReminderEnabled: Boolean = false,
     val moveReminderIntervalMin: Int = 60,
-    val voiceNavEnabled: Boolean = true
+    val voiceNavEnabled: Boolean = true,
+    // Wave C: calorie goal (daily kcal target, 0 = off)
+    val calorieGoalKcal: Int = 500,
+    // Body weight used for real calorie estimates when no heart rate is measured
+    val bodyWeightKg: Int = 70
 )
 
 enum class HeartRateZone(
@@ -183,6 +187,7 @@ data class LiveHeartRate(
     val bpm: Int = 0,
     val accuracy: Int = 0, // 0: No Contact, 1: Unreliable, 2: Low, 3: Medium, 4: High
     val isAvailable: Boolean = true,
+    val isFromExternal: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -195,6 +200,7 @@ data class LiveWorkoutMetrics(
     val dailySteps: Int = 0,        // daily total steps
     val cadenceSpm: Int = 0,
     val caloriesKcal: Int = 0,
+    val caloriesEstimated: Boolean = false,  // true when derived from movement (no HR measured)
     val distanceMeters: Double = 0.0,
     val elevationGainMeters: Double = 0.0,
     val speedMps: Double = 0.0,
@@ -209,6 +215,17 @@ data class PhoneMirroredMetrics(
     val isPhoneActive: Boolean = false
 )
 
+/** One auto-split (per km/mi) captured from real distance + elapsed time. */
+data class WorkoutSplit(
+    val index: Int,
+    val cumulativeMeters: Double,
+    val elapsedSeconds: Long
+) {
+    /** Real pace for this split in seconds per km. */
+    fun paceSecondsPerKm(): Double =
+        if (cumulativeMeters <= 0.0) 0.0 else elapsedSeconds / (cumulativeMeters / 1000.0)
+}
+
 data class DailyActivityStats(
     val steps: Int = 0,
     val stepGoal: Int = 10000,
@@ -222,7 +239,11 @@ data class PhoneConnectionStatus(
     val isConnected: Boolean = false,
     val phoneNodeName: String = "",
     val phoneNodeId: String = "",
-    val pendingQueueCount: Int = 0
+    val pendingQueueCount: Int = 0,
+    // MILES phone app detection
+    val localAppInstalled: Boolean = false,
+    val localAppVersion: String = "",
+    val nearbyPeerCount: Int = 0
 )
 
 /** Adoptable fitness companions (fed by real steps, like MILES phone). */

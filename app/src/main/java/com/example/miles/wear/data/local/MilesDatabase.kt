@@ -21,7 +21,7 @@ import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 
 @Database(
     entities = [QueueItemEntity::class, WorkoutSessionEntity::class, SavedPinEntity::class, DayStatsEntity::class, PetEntity::class, SavedRouteEntity::class, TrainingProgressEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class MilesDatabase : RoomDatabase() {
@@ -73,13 +73,21 @@ abstract class MilesDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 -> v6 adds workout splits + daily resting HR. */
+        val MIGRATION_5_6: androidx.room.migration.Migration = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE workout_sessions ADD COLUMN splitsJson TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE day_stats ADD COLUMN restingBpm INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): MilesDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     MilesDatabase::class.java,
                     "miles_wear_database"
-                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5).fallbackToDestructiveMigration().build()
+                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }

@@ -1,6 +1,8 @@
 package com.example.miles.wear.ui.screens
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
@@ -45,6 +47,7 @@ import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.data.backup.MilesBackupManager
 import com.example.miles.wear.data.export.WorkoutExporter
+import com.example.miles.wear.data.imports.WorkoutImporter
 import com.example.miles.wear.ui.theme.CoralFlame
 import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
@@ -76,6 +79,25 @@ fun ExportBackupScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var flash by remember { mutableStateOf<String?>(null) }
 
+    val flashClear: (String) -> Unit = { msg ->
+        flash = msg
+    }
+
+    // Pick any GPX / JSON / backup file from the device (Storage Access Framework)
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            busy = true
+            coroutineScope.launch {
+                val res = WorkoutImporter.importUri(context, repository, uri, "import.json")
+                busy = false
+                refresh++
+                flashClear(res.uiText())
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
@@ -83,9 +105,6 @@ fun ExportBackupScreen(onBack: () -> Unit) {
         backupFiles = WorkoutExporter.list(context)
     }
 
-    val flashClear: (String) -> Unit = { msg ->
-        flash = msg
-    }
     LaunchedEffect(flash) {
         if (flash != null) {
             kotlinx.coroutines.delay(2000L)
@@ -200,6 +219,33 @@ fun ExportBackupScreen(onBack: () -> Unit) {
                             fontWeight = FontWeight.Bold,
                             color = NeonCyan,
                             textAlign = TextAlign.Center
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
+                        if (busy) return@Chip
+                        importLauncher.launch(arrayOf("*/*"))
+                    },
+                    colors = ChipDefaults.chipColors(backgroundColor = Color(0xFF1B2B24), contentColor = Color.White),
+                    modifier = Modifier.fillMaxWidth(0.94f).padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            if (busy) "Working…" else "⬆ Import file…",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = VividGreen,
+                            textAlign = TextAlign.Center
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            "GPX · JSON workouts · backup (picks any file)",
+                            fontSize = 9.sp,
+                            color = MutedGray
                         )
                     }
                 )

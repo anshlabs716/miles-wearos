@@ -1,5 +1,6 @@
 package com.example.miles.wear.ui.components
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,9 +32,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -47,18 +50,28 @@ import com.example.miles.wear.ui.theme.ElectricAmber
 import com.example.miles.wear.ui.theme.MutedGray
 import com.example.miles.wear.ui.theme.NeonCyan
 import com.example.miles.wear.ui.theme.VividGreen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.ln
+import kotlin.math.log2
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
+import kotlin.math.roundToInt
+import kotlin.math.tan
 
 /**
- * High-performance OLED-optimized Map Component.
- * Supports OpenStreetMap vector tiling coordinates projection, custom zoom/pan controls,
- * route polyline visualization, Start & Finish markers, current-position indicator,
- * and automated interactive Route Replay.
+ * OLED-friendly workout map with REAL base-map tiles:
+ * - Street layer: © OpenStreetMap contributors
+ * - Satellite layer: Esri World Imagery (Maxar / Earthstar Geographics / USGS)
+ * Web-Mercator projection (standard slippy-map math), pan + zoom, route
+ * polyline, start/finish markers, live position pulse and route replay.
+ * When tiles can't load (offline), the dark grid fallback still renders.
  */
 @Composable
 fun RouteMapView(
@@ -73,6 +86,10 @@ fun RouteMapView(
     var zoomLevel by remember { mutableFloatStateOf(1f) }
     var panOffsetX by remember { mutableFloatStateOf(0f) }
     var panOffsetY by remember { mutableFloatStateOf(0f) }
+    var useSatellite by remember { mutableStateOf(false) }
+
+    // Tile cache: "z/x/y/layer" -> bitmap (only real loaded tiles)
+    val tileCache = remember { mutableStateMapOf<String, ImageBitmap>() }
 
     // Replay state
     var isReplaying by remember { mutableStateOf(false) }
@@ -147,30 +164,72 @@ fun RouteMapView(
                 }
             }
     ) {
-        // Map Canvas
+        // ---------- Web Mercator tile math (measured via canvas size at draw) ----------
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
             val pad = 24.dp.toPx()
 
-            // Subtle OSM grid lines
-            val gridColor = Color(0xFF141B26)
-            for (i in 1..4) {
-                val gx = (width / 5) * i
-                drawLine(gridColor, Offset(gx, 0f), Offset(gx, height), strokeWidth = 1f)
-                val gy = (height / 5) * i
-                drawLine(gridColor, Offset(0f, gy), Offset(width, gy), strokeWidth = 1f)
+            // Choose a slippy-map zoom whose pixel density matches the previous
+            // lat/lon span scaling, so zoom/pan feel identical to before.
+            val pxPerLon = ((width - pad * 2) * 0.85f * zoomLevel) / lonSpan.toFloat()
+            val worldSize = max(256.0, pxPerLon.toDouble() * 360.0)
+            val tileZoom = min(19, max(1, (log2(worldSize / 256.0)).roundToInt()))
+            val worldPx = 256.0 * (1 shl tileZoom)
+
+            fun lonToWorldX(lon: Double): Double = (lon + 180.0) / 360.0 * worldPx
+            fun latToWorldY(lat: Double): Double {
+                val rad = Math.toRadians(lat)
+                val y = (1.0 - ln(tan(rad) + 1.0 / cos(rad)) / PI) / 2.0
+                return y * worldPx
             }
 
-            fun project(lat: Double, lon: Double): Offset {
-                // Mercator-proportional flat mapping with zoom & pan
-                val nx = (lon - centerLon) / lonSpan
-                val ny = (centerLat - lat) / latSpan // Inverted Y for screen coords
+            val centerWorldX = lonToWorldX(centerLon)
+            val centerWorldY = latToWorldY(centerLat)
 
-                val baseScale = min((width - pad * 2) / 1.0f, (height - pad * 2) / 1.0f) * 0.85f * zoomLevel
-                val px = (width / 2f) + (nx.toFloat() * baseScale) + panOffsetX
-                val py = (height / 2f) + (ny.toFloat() * baseScale) + panOffsetY
-                return Offset(px, py)
+            fun project(lat: Double, lon: Double): Offset {
+                val sx = width / 2f + (lonToWorldX(lon) - centerWorldX).toFloat() + panOffsetX
+                val sy = height / 2f + (latToWorldY(lat) - centerWorldY).toFloat() + panOffsetY
+                return Offset(sx, sy)
+            }
+
+            // Visible world range (pan shifts the viewport in world space)
+            val shiftX = panOffsetX.toDouble()
+            val shiftY = panOffsetY.toDouble()
+            val worldMinX = centerWorldX - width / 2.0 - shiftX
+            val worldMaxX = centerWorldX + width / 2.0 - shiftX
+            val worldMinY = centerWorldY - height / 2.0 - shiftY
+            val worldMaxY = centerWorldY + height / 2.0 - shiftY
+
+            val tileX0 = max(0, floor(worldMinX / 256.0).toInt())
+            val tileX1 = min((1 shl tileZoom) - 1, floor(worldMaxX / 256.0).toInt())
+            val tileY0 = max(0, floor(worldMinY / 256.0).toInt())
+            val tileY1 = min((1 shl tileZoom) - 1, floor(worldMaxY / 256.0).toInt())
+
+            var tilesMixed = 0
+            for (tx in tileX0..tileX1) {
+                for (ty in tileY0..tileY1) {
+                    val key = "$tileZoom/$tx/$ty/${if (useSatellite) "sat" else "osm"}"
+                    val img = tileCache[key] ?: continue
+                    val sx = width / 2f + ((tx * 256) - centerWorldX).toFloat() + panOffsetX
+                    val sy = height / 2f + ((ty * 256) - centerWorldY).toFloat() + panOffsetY
+                    drawImage(img, topLeft = Offset(sx, sy))
+                    tilesMixed++
+                }
+            }
+
+            if (tilesMixed > 0) {
+                // Keep the OLED dark vibe on bright satellite imagery + route contrast
+                drawRect(Color(if (useSatellite) 0x40000000 else 0x22000000))
+            } else {
+                // Offline fallback: subtle OSM-style grid
+                val gridColor = Color(0xFF141B26)
+                for (i in 1..4) {
+                    val gx = (width / 5) * i
+                    drawLine(gridColor, Offset(gx, 0f), Offset(gx, height), strokeWidth = 1f)
+                    val gy = (height / 5) * i
+                    drawLine(gridColor, Offset(0f, gy), Offset(width, gy), strokeWidth = 1f)
+                }
             }
 
             // Draw Recorded Polyline
@@ -218,14 +277,53 @@ fun RouteMapView(
 
             activePoint?.let { loc ->
                 val pt = project(loc.lat, loc.lon)
-                // Pulse ring
                 drawCircle(color = NeonCyan.copy(alpha = 0.3f), radius = 10.dp.toPx(), center = pt)
                 drawCircle(color = Color(0xFF00E5FF), radius = 5.dp.toPx(), center = pt)
                 drawCircle(color = Color.White, radius = 2.dp.toPx(), center = pt)
             }
         }
 
-        // Overlay Controls (Zoom In, Zoom Out, Reset, Replay)
+        // ---------- Tile loader (real tiles, cached) ----------
+        LaunchedEffect(zoomLevel, centerLat, centerLon, panOffsetX, panOffsetY, useSatellite) {
+            if (!showControls && route.isEmpty()) return@LaunchedEffect
+            // Recompute the same viewport parameters for the fetch pass
+            // (independent of canvas size — approximate with 220x220 px round pick).
+            // To stay simple + safe we fetch a generous 4x4 neighborhood around
+            // the center tile at the current zoom; the cache covers the rest.
+            val pxPerLon = ((220f - 48f) * 0.85f * zoomLevel) / lonSpan.toFloat()
+            val worldSize = max(256.0, pxPerLon.toDouble() * 360.0)
+            val tileZoom = min(19, max(1, (log2(worldSize / 256.0)).roundToInt()))
+            val worldPx = 256.0 * (1 shl tileZoom)
+
+            val rad = Math.toRadians(centerLat)
+            val centerY = (1.0 - ln(tan(rad) + 1.0 / cos(rad)) / PI) / 2.0 * worldPx
+            val centerX = (centerLon + 180.0) / 360.0 * worldPx
+
+            val cTileX = floor(centerX / 256.0).toInt()
+            val cTileY = floor(centerY / 256.0).toInt()
+            val half = 3
+            val layer = if (useSatellite) "sat" else "osm"
+            for (dx in -half..half) {
+                for (dy in -half..half) {
+                    val tx = cTileX + dx
+                    val ty = cTileY + dy
+                    val maxT = (1 shl tileZoom) - 1
+                    if (tx < 0 || ty < 0 || tx > maxT || ty > maxT) continue
+                    val key = "$tileZoom/$tx/$ty/$layer"
+                    if (tileCache.containsKey(key)) continue
+                    val url = if (useSatellite) {
+                        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$tileZoom/$ty/$tx"
+                    } else {
+                        "https://tile.openstreetmap.org/$tileZoom/$tx/$ty.png"
+                    }
+                    val bytes = withContext(Dispatchers.IO) { fetchTileBytes(url) } ?: continue
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
+                    tileCache[key] = bmp.asImageBitmap()
+                }
+            }
+        }
+
+        // Overlay Controls (Layer toggle, Zoom In, Zoom Out, Reset, Replay)
         if (showControls) {
             Row(
                 modifier = Modifier
@@ -237,6 +335,10 @@ fun RouteMapView(
             ) {
                 // Zoom Controls
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MiniMapBtn(
+                        text = if (useSatellite) "🛰" else "🗺",
+                        color = if (useSatellite) ElectricAmber else NeonCyan
+                    ) { useSatellite = !useSatellite }
                     MiniMapBtn(text = "+") { zoomLevel = min(3.5f, zoomLevel + 0.5f) }
                     MiniMapBtn(text = "−") { zoomLevel = max(0.7f, zoomLevel - 0.5f) }
                     MiniMapBtn(text = "⊙") {
@@ -258,15 +360,30 @@ fun RouteMapView(
             }
         }
 
-        // OSM Badge (Top-left)
+        // Attribution (top-left)
         Text(
-            text = "© OpenStreetMap",
+            text = if (useSatellite) "© Esri · Maxar · USGS" else "© OpenStreetMap",
             fontSize = 7.sp,
             color = Color(0xFF5A6678),
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(6.dp)
         )
+    }
+}
+
+private fun fetchTileBytes(urlString: String): ByteArray? {
+    return try {
+        val conn = URL(urlString).openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 8000
+        conn.setRequestProperty("User-Agent", "MILES-WearOS/1.3")
+        conn.connect()
+        if (conn.responseCode == 200) {
+            conn.inputStream.use { it.readBytes() }
+        } else null
+    } catch (_: Exception) {
+        null
     }
 }
 
@@ -289,7 +406,7 @@ private fun MiniMapBtn(
     ) {
         Text(
             text = text,
-            fontSize = 11.sp,
+            fontSize = if (text.length > 1) 9.sp else 11.sp,
             fontWeight = FontWeight.Bold,
             color = color,
             textAlign = TextAlign.Center

@@ -29,10 +29,14 @@ import com.example.miles.wear.data.model.TrainingPlanState
 import com.example.miles.wear.data.model.WearSettings
 import com.example.miles.wear.data.model.WeeklyProgress
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -90,6 +94,8 @@ class MilesRepository(
         val moveReminderEnabled = prefs.getBoolean("move_reminder_enabled", false)
         val moveReminderIntervalMin = prefs.getInt("move_reminder_interval_min", 60)
         val voiceNavEnabled = prefs.getBoolean("voice_nav_enabled", true)
+        val calorieGoalKcal = prefs.getInt("calorie_goal_kcal", 500)
+        val bodyWeightKg = prefs.getInt("body_weight_kg", 70)
 
         return WearSettings(
             unit = unit,
@@ -121,7 +127,9 @@ class MilesRepository(
             lazyDaysPerWeek = lazyDaysPerWeek,
             moveReminderEnabled = moveReminderEnabled,
             moveReminderIntervalMin = moveReminderIntervalMin,
-            voiceNavEnabled = voiceNavEnabled
+            voiceNavEnabled = voiceNavEnabled,
+            calorieGoalKcal = calorieGoalKcal,
+            bodyWeightKg = bodyWeightKg
         )
     }
 
@@ -158,6 +166,8 @@ class MilesRepository(
             .putBoolean("move_reminder_enabled", newSettings.moveReminderEnabled)
             .putInt("move_reminder_interval_min", newSettings.moveReminderIntervalMin)
             .putBoolean("voice_nav_enabled", newSettings.voiceNavEnabled)
+            .putInt("calorie_goal_kcal", newSettings.calorieGoalKcal)
+            .putInt("body_weight_kg", newSettings.bodyWeightKg)
             .apply()
     }
 
@@ -225,6 +235,19 @@ class MilesRepository(
     }
 
     // ----- Daily stats + streaks -----
+    /**
+     * Today's persisted day-stats row (real steps/distance/calories).
+     * Re-read every 30s so the date rolls over correctly past midnight.
+     */
+    fun observeTodayStats(): Flow<DayStatsEntity?> = flow {
+        while (currentCoroutineContext().isActive) {
+            emit(withContext(Dispatchers.IO) {
+                dayStatsDao.getDay(dateKey(System.currentTimeMillis()))
+            })
+            delay(30_000L)
+        }
+    }
+
     /** Adds today's activity into the day_stats row (used at workout finish). */
     suspend fun recordDayActivity(distanceMeters: Double, steps: Int, activeSeconds: Long, calories: Int) {
         withContext(Dispatchers.IO) {
@@ -236,10 +259,29 @@ class MilesRepository(
                     steps = (existing?.steps ?: 0) + steps,
                     distanceMeters = (existing?.distanceMeters ?: 0.0) + distanceMeters,
                     activeSeconds = (existing?.activeSeconds ?: 0L) + activeSeconds,
-                    calories = (existing?.calories ?: 0) + calories
+                    calories = (existing?.calories ?: 0) + calories,
+                    restingBpm = existing?.restingBpm ?: 0
                 )
             )
         }
+    }
+
+    /** Lowest sustained HR seen today (real sensor samples while idle). */
+    suspend fun recordRestingBpm(bpm: Int) {
+        if (bpm < 40 || bpm > 160) return
+        withContext(Dispatchers.IO) {
+            val key = dateKey(System.currentTimeMillis())
+            val existing = dayStatsDao.getDay(key)
+            if (existing == null) {
+                dayStatsDao.upsertDay(DayStatsEntity(dateKey = key, restingBpm = bpm))
+            } else if (existing.restingBpm == 0 || bpm < existing.restingBpm) {
+                dayStatsDao.upsertDay(existing.copy(restingBpm = bpm))
+            }
+        }
+    }
+
+    suspend fun todayRestingBpm(): Int = withContext(Dispatchers.IO) {
+        dayStatsDao.getDay(dateKey(System.currentTimeMillis()))?.restingBpm ?: 0
     }
 
     /** Real streaks + personal records from saved workout history and day stats. */

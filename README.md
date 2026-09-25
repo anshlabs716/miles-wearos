@@ -3,7 +3,7 @@
 ### A standalone, sensor-accurate, privacy-focused activity tracker for Wear OS.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/STATUS-1.0.0-success?style=for-the-badge" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/STATUS-1.0.1-success?style=for-the-badge" alt="Version 1.0.1">
   <img src="https://img.shields.io/badge/DEVELOPMENT-ACTIVE-yellow?style=for-the-badge" alt="Active Development">
   <img src="https://img.shields.io/badge/PLATFORM-WEAR%20OS%203%2B-4285F4?style=for-the-badge&logo=wearos&logoColor=white" alt="Wear OS">
   <img src="https://img.shields.io/badge/KOTLIN-100%25-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin">
@@ -22,7 +22,7 @@
 
 **MILES Wear OS** is a modern Wear OS activity and step tracker focused on real sensor data, GPS tracking, saved routes, training plans, and a clean OLED-first UI.
 
-> **Status:** Version 1.0.0
+> **Status:** Version 1.0.1
 
 ## ✨ Features
 
@@ -39,8 +39,16 @@
 - Compass and water lock
 - Sensor diagnostics
 - Export & backup (GPX, CSV, JSON) with on-device restore
+- Import workouts + backups from any app (GPX, JSON, share-to-MILES)
+- Street + satellite map on every workout (OSM & Esri tiles)
+- Detects the MILES phone app: on this device (package check) or nearby (Wearable capability) with tap-to-open
+- Phone sync with **zero Google Play Services**: local-network discovery (UDP beacon) + TCP messaging for live metrics, remote workout control, HR/cadence streaming and offline queue sync
 - Move reminders (sitting-streak nags, skip during workouts)
 - Voice navigation (spoken turn-by-turn cues)
+- Automatic km/mi splits with real pace
+- Resting heart rate (real lowest idle HR per day)
+- Daily calorie goal with dashboard progress
+- BLE heart-rate straps and cadence sensors
 - Privacy-focused, local-first design
 
 MILES does not intentionally generate fake GPS, heart-rate, or step data.
@@ -68,7 +76,7 @@ Your activity data stays under your control.
 - Room
 - OSMdroid / OpenStreetMap
 - OSRM + Nominatim
-- Wearable Data Layer
+- Local-network sockets (UDP discovery + TCP) for phone sync
 - Coroutines
 
 ## 📦 Build
@@ -91,7 +99,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | Area | Status |
 | --- | --- |
-| Wear app | **1.0.0 released** |
+| Wear app | **1.0.1 released** |
 | Step tracking | Implemented |
 | GPS tracking + navigation | Implemented |
 | Saved routes + route builder | Implemented |
@@ -101,15 +109,18 @@ app/build/outputs/apk/debug/app-debug.apk
 | Records & PRs | Implemented |
 | Compass | Implemented |
 | Mirrored workouts | Implemented |
-| Move reminders | Next wave |
-| Voice navigation (TTS) | Next wave |
-| Export / backup (JSON, CSV, GPX) | Next wave |
+| Move reminders | Implemented |
+| Voice navigation (TTS) | Implemented |
+| Export / backup (JSON, CSV, GPX) | Implemented |
+| Import from any app (GPX, JSON, backup) | Implemented |
+| Satellite + street map tiles | Implemented |
+| BLE HR + cadence sensors | Implemented |
+| GMS-free phone sync (local network) | Implemented |
 
 ## 🗺️ Roadmap
 
 - More sensor support
 - Better GPS filtering and route smoothing
-- BLE heart-rate / cadence sensors
 - Health Connect integration
 - Continued MILES Studio development
 

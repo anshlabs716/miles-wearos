@@ -1,7 +1,9 @@
 package com.example.miles.wear
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material3.Text
@@ -43,11 +46,14 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.miles.wear.data.imports.WorkoutImporter
 import com.example.miles.wear.data.model.WorkoutPlan
 import com.example.miles.wear.data.model.WorkoutType
+import kotlinx.coroutines.launch
 import com.example.miles.wear.ui.screens.ActiveWorkoutScreen
 import com.example.miles.wear.ui.screens.CompassScreen
 import com.example.miles.wear.ui.screens.DashboardScreen
+import com.example.miles.wear.ui.screens.DevicesScreen
 import com.example.miles.wear.ui.screens.ExportBackupScreen
 import com.example.miles.wear.ui.screens.HistoryScreen
 import com.example.miles.wear.ui.screens.MirroredWorkoutScreen
@@ -77,11 +83,31 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val navToMirrored = intent.getBooleanExtra("NAV_TO_MIRRORED", false)
+        handleImportIntent(intent)
 
         setContent {
             MilesWearTheme {
                 MilesAppContent(initialNavToMirrored = navToMirrored)
             }
+        }
+    }
+
+    /** Accepts "Share to MILES" / "Open with MILES" GPX, JSON, or backup files. */
+    private fun handleImportIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
+        val uri = intent.data ?: intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: return
+        val name = intent.clipData?.let { cd ->
+            (0 until cd.itemCount).firstNotNullOfOrNull { i -> cd.getItemAt(i).uri?.lastPathSegment }
+        } ?: uri.lastPathSegment ?: "import.json"
+        lifecycleScope.launch {
+            val res = WorkoutImporter.importUri(
+                applicationContext,
+                MilesWearApplication.instance.repository,
+                uri,
+                name
+            )
+            android.widget.Toast.makeText(this@MainActivity, res.uiText(), android.widget.Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -111,6 +137,10 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            list.add(Manifest.permission.BLUETOOTH_SCAN)
+            list.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             list.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -204,6 +234,9 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
                     },
                     onOpenExport = {
                         navController.navigate("export")
+                    },
+                    onOpenBle = {
+                        navController.navigate("devices")
                     },
                     onStartQuickWorkout = { type ->
                         navController.navigate("active_workout/${type.name}")
@@ -388,6 +421,12 @@ fun MilesAppContent(initialNavToMirrored: Boolean = false) {
 
             composable("export") {
                 ExportBackupScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("devices") {
+                DevicesScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

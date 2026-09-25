@@ -41,6 +41,7 @@ import androidx.wear.compose.material3.Text
 import com.example.miles.wear.MilesWearApplication
 import com.example.miles.wear.data.local.entity.WorkoutSessionEntity
 import com.example.miles.wear.data.model.WorkoutType
+import com.example.miles.wear.engine.Splitter
 import com.example.miles.wear.sensor.SensorTracker
 import com.example.miles.wear.ui.components.RouteMapView
 import com.example.miles.wear.ui.components.StatPill
@@ -83,6 +84,10 @@ fun WorkoutDetailScreen(
 
     val parsedRoute = remember(cur?.routeGeoJson) {
         SensorTracker.parseRouteJson(cur?.routeGeoJson)
+    }
+
+    val splits = remember(cur?.splitsJson) {
+        Splitter.decode(cur?.splitsJson)
     }
 
     Scaffold(
@@ -190,6 +195,56 @@ fun WorkoutDetailScreen(
                         color = CoralFlame,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            // Real per-km / per-mi auto splits
+            if (splits.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "SPLITS (REAL)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElectricAmber,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 2.dp)
+                        )
+                        var prevMeters = 0.0
+                        var prevSeconds = 0L
+                        splits.forEach { split ->
+                            val segMeters = split.cumulativeMeters - prevMeters
+                            val segSeconds = split.elapsedSeconds - prevSeconds
+                            val pace = if (segMeters > 0.0) segSeconds / (segMeters / 1000.0) else 0.0
+                            val unitLabel = if (settings.unit == com.example.miles.wear.data.model.DistanceUnit.METRIC) "KM" else "MI"
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 1.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "$unitLabel ${split.index}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "${settings.unit.formatDistance(segMeters)}  •  ${Splitter.formatPace(pace)}",
+                                    fontSize = 10.sp,
+                                    color = NeonCyan
+                                )
+                            }
+                            prevMeters = split.cumulativeMeters
+                            prevSeconds = split.elapsedSeconds
+                        }
+                    }
                 }
             }
 
