@@ -3,7 +3,7 @@
 ### A standalone, sensor-accurate, privacy-focused activity tracker for Wear OS.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/STATUS-1.0.0-success?style=for-the-badge" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/STATUS-1.0.1-success?style=for-the-badge" alt="Version 1.0.1">
   <img src="https://img.shields.io/badge/DEVELOPMENT-ACTIVE-yellow?style=for-the-badge" alt="Active Development">
   <img src="https://img.shields.io/badge/PLATFORM-WEAR%20OS%203%2B-4285F4?style=for-the-badge&logo=wearos&logoColor=white" alt="Wear OS">
   <img src="https://img.shields.io/badge/KOTLIN-100%25-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin">
@@ -22,7 +22,7 @@
 
 **MILES Wear OS** is a modern Wear OS activity and step tracker focused on real sensor data, GPS tracking, saved routes, training plans, and a clean OLED-first UI.
 
-> **Status:** Version 1.0.0
+> **Status:** Version 1.0.1
 
 ## ✨ Features
 
@@ -99,7 +99,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | Area | Status |
 | --- | --- |
-| Wear app | **1.0.0 released** |
+| Wear app | **1.0.1 released** |
 | Step tracking | Implemented |
 | GPS tracking + navigation | Implemented |
 | Saved routes + route builder | Implemented |
