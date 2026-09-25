@@ -76,7 +76,7 @@ Your activity data stays under your control.
 - Room
 - OSMdroid / OpenStreetMap
 - OSRM + Nominatim
-- Wearable Data Layer
+- Local-network sockets (UDP discovery + TCP) for phone sync
 - Coroutines
 
 ## 📦 Build
@@ -109,9 +109,13 @@ app/build/outputs/apk/debug/app-debug.apk
 | Records & PRs | Implemented |
 | Compass | Implemented |
 | Mirrored workouts | Implemented |
-| Move reminders | Next wave |
-| Voice navigation (TTS) | Next wave |
-| Export / backup (JSON, CSV, GPX) | Next wave |
+| Move reminders | Implemented |
+| Voice navigation (TTS) | Implemented |
+| Export / backup (JSON, CSV, GPX) | Implemented |
+| Import from any app (GPX, JSON, backup) | Implemented |
+| Satellite + street map tiles | Implemented |
+| BLE HR + cadence sensors | Implemented |
+| GMS-free phone sync (local network) | Implemented |
 
 ## 🗺️ Roadmap
 
