@@ -42,6 +42,10 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     val isStepSensorPresent: Boolean = stepCounterSensor != null || stepDetectorSensor != null
     val isPressureSensorPresent: Boolean = pressureSensor != null
 
+    /** User's body weight (kg) — only used for real movement-based calorie estimates. */
+    @Volatile
+    var bodyWeightKg: Int = 70
+
     // Reactive State
     private val _liveHeartRate = MutableStateFlow(
         LiveHeartRate(isAvailable = isHeartRateSensorPresent)
@@ -418,14 +422,17 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
     }
 
     fun tickTimer(elapsedSeconds: Long) {
-        val currentBpm = _liveHeartRate.value.bpm
-        val calBurnRatePerSec = when (HeartRateZone.fromBpm(currentBpm)) {
-            HeartRateZone.RESTING -> 0.02   // ~1.2 kcal/min
-            HeartRateZone.WARMUP -> 0.08    // ~4.8 kcal/min
-            HeartRateZone.AEROBIC -> 0.15   // ~9.0 kcal/min
-            HeartRateZone.THRESHOLD -> 0.22 // ~13.2 kcal/min
-            HeartRateZone.ANAEROBIC -> 0.28 // ~16.8 kcal/min
-            HeartRateZone.MAX -> 0.35       // ~21 kcal/min
+        val hr = _liveHeartRate.value.bpm
+        val hasRealHr = isHeartRateSensorPresent && hr > 0
+        val speed = lastLocation?.speed?.toDouble() ?: 0.0
+        val cadence = externalCadenceRpm ?: stepTimestamps.size
+
+        // Real heart rate is the best signal; without HR hardware we fall back to
+        // a MET estimate from real measured movement (speed / step cadence).
+        val calBurnRatePerSec = if (hasRealHr) {
+            CalorieEstimator.fromHeartRate(hr)
+        } else {
+            CalorieEstimator.fromMovement(speed, cadence, bodyWeightKg)
         }
         totalCaloriesBurned += calBurnRatePerSec
         updateWorkoutMetrics(elapsedSeconds)
@@ -449,6 +456,7 @@ class SensorTracker(private val context: Context) : SensorEventListener, Locatio
             dailySteps = currentDailySteps,
             cadenceSpm = cadence,
             caloriesKcal = totalCaloriesBurned.toInt(),
+            caloriesEstimated = !(isHeartRateSensorPresent && _liveHeartRate.value.bpm > 0),
             distanceMeters = totalDistanceMeters,
             elevationGainMeters = elevGain,
             speedMps = lastLocation?.speed?.toDouble() ?: 0.0,

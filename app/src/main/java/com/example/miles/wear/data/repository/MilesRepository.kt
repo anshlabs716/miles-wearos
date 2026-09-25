@@ -29,10 +29,14 @@ import com.example.miles.wear.data.model.TrainingPlanState
 import com.example.miles.wear.data.model.WearSettings
 import com.example.miles.wear.data.model.WeeklyProgress
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,6 +95,7 @@ class MilesRepository(
         val moveReminderIntervalMin = prefs.getInt("move_reminder_interval_min", 60)
         val voiceNavEnabled = prefs.getBoolean("voice_nav_enabled", true)
         val calorieGoalKcal = prefs.getInt("calorie_goal_kcal", 500)
+        val bodyWeightKg = prefs.getInt("body_weight_kg", 70)
 
         return WearSettings(
             unit = unit,
@@ -123,7 +128,8 @@ class MilesRepository(
             moveReminderEnabled = moveReminderEnabled,
             moveReminderIntervalMin = moveReminderIntervalMin,
             voiceNavEnabled = voiceNavEnabled,
-            calorieGoalKcal = calorieGoalKcal
+            calorieGoalKcal = calorieGoalKcal,
+            bodyWeightKg = bodyWeightKg
         )
     }
 
@@ -161,6 +167,7 @@ class MilesRepository(
             .putInt("move_reminder_interval_min", newSettings.moveReminderIntervalMin)
             .putBoolean("voice_nav_enabled", newSettings.voiceNavEnabled)
             .putInt("calorie_goal_kcal", newSettings.calorieGoalKcal)
+            .putInt("body_weight_kg", newSettings.bodyWeightKg)
             .apply()
     }
 
@@ -228,6 +235,19 @@ class MilesRepository(
     }
 
     // ----- Daily stats + streaks -----
+    /**
+     * Today's persisted day-stats row (real steps/distance/calories).
+     * Re-read every 30s so the date rolls over correctly past midnight.
+     */
+    fun observeTodayStats(): Flow<DayStatsEntity?> = flow {
+        while (currentCoroutineContext().isActive) {
+            emit(withContext(Dispatchers.IO) {
+                dayStatsDao.getDay(dateKey(System.currentTimeMillis()))
+            })
+            delay(30_000L)
+        }
+    }
+
     /** Adds today's activity into the day_stats row (used at workout finish). */
     suspend fun recordDayActivity(distanceMeters: Double, steps: Int, activeSeconds: Long, calories: Int) {
         withContext(Dispatchers.IO) {

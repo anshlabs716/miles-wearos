@@ -201,6 +201,39 @@ fun SettingsScreen(
             item {
                 Chip(
                     onClick = {
+                        val weights = listOf(45, 55, 65, 70, 75, 80, 90, 100, 110)
+                        val idx = weights.indexOf(settings.bodyWeightKg)
+                        val next = if (idx >= 0) weights[(idx + 1) % weights.size] else weights[3]
+                        repository.updateSettings(settings.copy(bodyWeightKg = next))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = Color(0xFF1B2230),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Body Weight: ${settings.bodyWeightKg} kg",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = "Used for real calorie estimates when there's no HR sensor. Tap to change.",
+                            fontSize = 9.sp,
+                            color = MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
                         val options = listOf(0, 300, 400, 500, 750, 1000)
                         val next = options[(options.indexOf(settings.calorieGoalKcal) + 1) % options.size]
                         repository.updateSettings(settings.copy(calorieGoalKcal = next))
