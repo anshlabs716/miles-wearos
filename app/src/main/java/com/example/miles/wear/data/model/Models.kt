@@ -152,7 +152,9 @@ data class WearSettings(
     val moveReminderIntervalMin: Int = 60,
     val voiceNavEnabled: Boolean = true,
     // Wave C: calorie goal (daily kcal target, 0 = off)
-    val calorieGoalKcal: Int = 500
+    val calorieGoalKcal: Int = 500,
+    // Body weight used for real calorie estimates when no heart rate is measured
+    val bodyWeightKg: Int = 70
 )
 
 enum class HeartRateZone(
@@ -198,6 +200,7 @@ data class LiveWorkoutMetrics(
     val dailySteps: Int = 0,        // daily total steps
     val cadenceSpm: Int = 0,
     val caloriesKcal: Int = 0,
+    val caloriesEstimated: Boolean = false,  // true when derived from movement (no HR measured)
     val distanceMeters: Double = 0.0,
     val elevationGainMeters: Double = 0.0,
     val speedMps: Double = 0.0,

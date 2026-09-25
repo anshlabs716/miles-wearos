@@ -98,6 +98,7 @@ fun DashboardScreen(
     val unsyncedCount by repository.unsyncedCount.collectAsStateWithLifecycle(initialValue = 0)
     val sessions by repository.allSessions.collectAsStateWithLifecycle(initialValue = emptyList())
     val todaySessions by repository.getTodaySessions().collectAsStateWithLifecycle(initialValue = emptyList())
+    val todayDay by repository.observeTodayStats().collectAsStateWithLifecycle(initialValue = null)
     val settings by repository.settings.collectAsStateWithLifecycle()
     val gpsStatus by sensorTracker.gpsStatus.collectAsStateWithLifecycle()
     val batteryPercent by sensorTracker.batteryPercent.collectAsStateWithLifecycle()
@@ -138,7 +139,10 @@ fun DashboardScreen(
     val todayWorkoutSeconds = todaySessions.sumOf { it.durationSeconds } + metrics.elapsedSeconds
     val todayActiveMinutes = (todayWorkoutSeconds / 60).toInt()
 
-    val todayCalories = todaySessions.sumOf { it.caloriesKcal } + metrics.caloriesKcal
+    // Real calories: everything already banked today (finished workouts + everyday
+    // step activity) plus the in-progress workout's live burn.
+    val todayCalories = (todayDay?.calories ?: 0) + metrics.caloriesKcal
+    val caloriesAreEstimate = !sensorTracker.isHeartRateSensorPresent
 
     Scaffold(
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) }
@@ -317,7 +321,12 @@ fun DashboardScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(text = "$todayCalories kcal", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CoralFlame)
                             Text(
-                                text = if (settings.calorieGoalKcal > 0) "of ${settings.calorieGoalKcal} goal" else "Burned",
+                                text = when {
+                                    caloriesAreEstimate && settings.calorieGoalKcal > 0 -> "est. of ${settings.calorieGoalKcal}"
+                                    caloriesAreEstimate -> "est. burned"
+                                    settings.calorieGoalKcal > 0 -> "of ${settings.calorieGoalKcal} goal"
+                                    else -> "Burned"
+                                },
                                 fontSize = 8.sp,
                                 color = MutedGray
                             )
