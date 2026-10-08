@@ -13,10 +13,19 @@ android {
         applicationId = "com.example.miles.wear"
         minSdk = 30
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.0.3"
+        versionCode = 9
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Single-ABI build. Wear OS hardware and every Wear emulator image are
+        // arm64-v8a; the armeabi-v7a/x86/x86_64 copies of the one native lib
+        // (androidx.graphics.path) are dead weight. Override with
+        // -PfullAbis=true when publishing a universal APK to F-Droid.
+        val useAllAbis = (project.findProperty("fullAbis") as String?)?.toBoolean() ?: false
+        if (!useAllAbis) {
+            ndk { abiFilters += listOf("arm64-v8a") }
+        }
     }
 
     val releaseKeystoreFile = file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/missing-release.keystore")

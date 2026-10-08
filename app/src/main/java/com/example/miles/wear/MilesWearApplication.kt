@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 class MilesWearApplication : Application() {
 
@@ -62,7 +63,16 @@ class MilesWearApplication : Application() {
         sensorTracker = SensorTracker(this)
         bleSensorManager = BleSensorManager(this)
         phoneMessagingManager = PhoneMessagingManager(this, repository).apply {
-            initialize()
+            // Only discover/broadcast when the user has opted in. Otherwise the
+            // app stays silent on the network: no UDP beacon, no TCP listener.
+            if (repository.settings.value.phoneSyncEnabled) initialize()
+        }
+
+        // Start/stop discovery when the user flips the setting, without a restart.
+        appScope.launch {
+            repository.settings.collect { s ->
+                if (s.phoneSyncEnabled) phoneMessagingManager.initialize() else phoneMessagingManager.cleanup()
+            }
         }
 
         createNotificationChannel()

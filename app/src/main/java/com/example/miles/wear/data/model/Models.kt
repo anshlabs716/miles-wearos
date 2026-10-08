@@ -154,7 +154,10 @@ data class WearSettings(
     // Wave C: calorie goal (daily kcal target, 0 = off)
     val calorieGoalKcal: Int = 500,
     // Body weight used for real calorie estimates when no heart rate is measured
-    val bodyWeightKg: Int = 70
+    val bodyWeightKg: Int = 70,
+    // Local-network phone sync (UDP beacon + TCP). Opt-in: when off, the app
+    // never broadcasts a discovery beacon or opens a listening socket.
+    val phoneSyncEnabled: Boolean = false
 )
 
 enum class HeartRateZone(

@@ -905,6 +905,36 @@ fun SettingsScreen(
             item {
                 Chip(
                     onClick = {
+                        repository.updateSettings(settings.copy(phoneSyncEnabled = !settings.phoneSyncEnabled))
+                    },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = if (settings.phoneSyncEnabled) Color(0xFF0F2A1E) else Color(0xFF18181C),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(vertical = 2.dp),
+                    label = {
+                        Text(
+                            text = "Phone Sync",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (settings.phoneSyncEnabled) VividGreen else Color.White
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = if (settings.phoneSyncEnabled) "ON • Finds MILES on this Wi-Fi" else "OFF • No network activity",
+                            fontSize = 9.sp,
+                            color = if (settings.phoneSyncEnabled) VividGreen else MutedGray
+                        )
+                    }
+                )
+            }
+
+            item {
+                Chip(
+                    onClick = {
                         repository.updateSettings(settings.copy(moveReminderEnabled = !settings.moveReminderEnabled))
                         com.example.miles.wear.engine.MoveReminderManager.applySetting(context)
                     },

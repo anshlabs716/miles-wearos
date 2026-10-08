@@ -96,6 +96,7 @@ class MilesRepository(
         val voiceNavEnabled = prefs.getBoolean("voice_nav_enabled", true)
         val calorieGoalKcal = prefs.getInt("calorie_goal_kcal", 500)
         val bodyWeightKg = prefs.getInt("body_weight_kg", 70)
+        val phoneSyncEnabled = prefs.getBoolean("phone_sync_enabled", false)
 
         return WearSettings(
             unit = unit,
@@ -129,7 +130,8 @@ class MilesRepository(
             moveReminderIntervalMin = moveReminderIntervalMin,
             voiceNavEnabled = voiceNavEnabled,
             calorieGoalKcal = calorieGoalKcal,
-            bodyWeightKg = bodyWeightKg
+            bodyWeightKg = bodyWeightKg,
+            phoneSyncEnabled = phoneSyncEnabled
         )
     }
 
@@ -168,6 +170,7 @@ class MilesRepository(
             .putBoolean("voice_nav_enabled", newSettings.voiceNavEnabled)
             .putInt("calorie_goal_kcal", newSettings.calorieGoalKcal)
             .putInt("body_weight_kg", newSettings.bodyWeightKg)
+            .putBoolean("phone_sync_enabled", newSettings.phoneSyncEnabled)
             .apply()
     }
 

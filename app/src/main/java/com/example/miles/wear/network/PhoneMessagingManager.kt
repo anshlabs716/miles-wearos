@@ -3,7 +3,6 @@ package com.example.miles.wear.network
 import android.content.Context
 import android.os.BatteryManager
 import android.os.Build
-import android.provider.Settings
 import android.util.Log
 import com.example.miles.wear.data.model.PhoneConnectionStatus
 import com.example.miles.wear.data.model.PhoneMirroredMetrics
@@ -20,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Phone connection over the local network — **no Google Play Services**.
@@ -57,9 +57,25 @@ class PhoneMessagingManager(
         const val PATH_FLUSH_QUEUE = LanProtocol.PATH_FLUSH_QUEUE
     }
 
+    /**
+     * Random per-install identifier used for discovery.
+     *
+     * Deliberately NOT ANDROID_ID: that value is stable across every app on the
+     * device and would be broadcast in cleartext to every host on the local
+     * network. A random UUID does the same job for peer matching while revealing
+     * nothing about the device.
+     */
+    private fun installId(): String {
+        val prefs = context.getSharedPreferences("miles_wear_lan", Context.MODE_PRIVATE)
+        prefs.getString("install_id", null)?.let { return it }
+        val generated = UUID.randomUUID().toString()
+        prefs.edit().putString("install_id", generated).apply()
+        return generated
+    }
+
     fun initialize() {
         if (transport != null) return
-        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+        val androidId = installId()
         val appVersion = runCatching {
             @Suppress("DEPRECATION")
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
