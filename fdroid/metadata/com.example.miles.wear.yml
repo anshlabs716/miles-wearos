@@ -1,0 +1,27 @@
+Categories:
+  - Sports & Health
+  - Workout
+License: GPL-3.0-only
+AuthorName: Ansh
+SourceCode: https://github.com/anshlabs716/miles-wearos
+IssueTracker: https://github.com/anshlabs716/miles-wearos/issues
+Changelog: https://github.com/anshlabs716/miles-wearos/blob/main/CHANGELOG.md
+
+Name: MILES Wear OS
+AutoName: MILES Wear OS
+
+RepoType: git
+Repo: https://github.com/anshlabs716/miles-wearos
+
+Builds:
+  - versionName: 1.0.3
+    versionCode: 8
+    commit: 2f9a5f478a80049cd4eddbba4eba6fc0a96765c1
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.0.3
+CurrentVersionCode: 8
