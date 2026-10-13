@@ -2,8 +2,6 @@
 
 High-level structure of MILES Wear OS.
 
-# Architecture
-
 This page describes the high-level structure of MILES Wear OS. It is a starting
 point and is updated as the implementation evolves.
 
@@ -13,9 +11,9 @@ MILES Wear OS
 
 ## Main components
 
-- `**Kotlin**`
-- `**Jetpack Compose for Wear OS**`
-- `**AndroidX**`
+- **Kotlin**
+- **Jetpack Compose for Wear OS**
+- **AndroidX**
 
 ## Data flow
 

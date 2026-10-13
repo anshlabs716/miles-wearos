@@ -2,8 +2,6 @@
 
 Architecture decision records for MILES Wear OS.
 
-# Architecture Decision Records
-
 This directory records significant architecture decisions for MILES Wear OS.
 
 ## What is an ADR?

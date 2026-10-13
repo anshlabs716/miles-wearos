@@ -2,8 +2,6 @@
 
 How to configure MILES Wear OS.
 
-# Configuration
-
 Reference for configuring MILES Wear OS.
 
 ## Where configuration lives
