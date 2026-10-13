@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use MILES Wear OS in your work, please cite it as below."
+title: "MILES Wear OS"
+type: software
+authors:
+  - family-names: "Bhatia"
+    given-names: "Ansh"
+    alias: "anshlabs716"
+repository-code: "https://github.com/anshlabs716/miles-wearos"
+license: "NOASSERTION"
+abstract: "MILES Wear OS"
