@@ -208,45 +208,6 @@ miles-wearos/
 ├── .github/
 ├── .gitignore
 ├── .markdownlint-cli2.jsonc
-├── app/
-│   ├── build.gradle.kts
-│   ├── proguard-rules.pro
-│   ├── src/
-│   │   ├── main/
-│   │   ├── test/
-├── build.gradle.kts
-├── CHANGELOG.md
-├── CITATION.cff
-├── CODE_OF_CONDUCT.md
-├── COMPATIBILITY.md
-├── CONTRIBUTING.md
-├── docs/
-├── fdroid/
-├── gradle/
-├── gradle.properties
-├── gradlew
-├── gradlew.bat
-├── LICENSE
-├── metadata.json
-├── PRIVACY.md
-├── README.md
-├── SECURITY.md
-├── settings.gradle.kts
-├── SUPPORT.md
-├── THIRD_PARTY_NOTICES.md
-```
-
----
-
-## 📁 Project Files
-
-```text
-miles-wearos/
-├── .editorconfig
-├── .gitattributes
-├── .github/
-├── .gitignore
-├── .markdownlint-cli2.jsonc
 ├── CHANGELOG.md
 ├── CITATION.cff
 ├── CODE_OF_CONDUCT.md
