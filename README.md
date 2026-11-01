@@ -238,6 +238,45 @@ miles-wearos/
 
 ---
 
+## 📁 Project Files
+
+```text
+miles-wearos/
+├── .editorconfig
+├── .gitattributes
+├── .github/
+├── .gitignore
+├── .markdownlint-cli2.jsonc
+├── CHANGELOG.md
+├── CITATION.cff
+├── CODE_OF_CONDUCT.md
+├── COMPATIBILITY.md
+├── CONTRIBUTING.md
+├── LICENSE
+├── PRIVACY.md
+├── README.md
+├── SECURITY.md
+├── SUPPORT.md
+├── THIRD_PARTY_NOTICES.md
+├── app/
+│   ├── build.gradle.kts
+│   ├── proguard-rules.pro
+│   └── src/
+│       ├── main/
+│       └── test/
+├── build.gradle.kts
+├── docs/
+├── fdroid/
+├── gradle/
+├── gradle.properties
+├── gradlew
+├── gradlew.bat
+├── metadata.json
+└── settings.gradle.kts
+```
+
+---
+
 ## 📄 License
 
 **GPLv3**
