@@ -206,19 +206,25 @@ miles-wearos/
 ├── .editorconfig
 ├── .gitattributes
 ├── .github/
+│   ├── CODEOWNERS
+│   ├── CONTRIBUTING.md
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml
+│   │   ├── config.yml
+│   │   ├── feature_request.yml
+│   │   └── question.yml
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   ├── release.yml
+│   └── workflows/
+│       ├── android-ci.yml
+│       ├── build.yml
+│       ├── ci.yml
+│       ├── links.yml
+│       ├── markdown-lint.yml
+│       ├── release.yml
+│       └── security.yml
 ├── .gitignore
 ├── .markdownlint-cli2.jsonc
-├── CHANGELOG.md
-├── CITATION.cff
-├── CODE_OF_CONDUCT.md
-├── COMPATIBILITY.md
-├── CONTRIBUTING.md
-├── LICENSE
-├── PRIVACY.md
-├── README.md
-├── SECURITY.md
-├── SUPPORT.md
-├── THIRD_PARTY_NOTICES.md
 ├── app/
 │   ├── build.gradle.kts
 │   ├── proguard-rules.pro
@@ -226,14 +232,53 @@ miles-wearos/
 │       ├── main/
 │       └── test/
 ├── build.gradle.kts
+├── CHANGELOG.md
+├── CITATION.cff
+├── CODE_OF_CONDUCT.md
+├── COMPATIBILITY.md
+├── CONTRIBUTING.md
 ├── docs/
+│   ├── adr/
+│   │   └── README.md
+│   ├── architecture.md
+│   ├── background-behaviour.md
+│   ├── building.md
+│   ├── configuration.md
+│   ├── dependencies.md
+│   ├── development.md
+│   ├── faq.md
+│   ├── index.md
+│   ├── network-protocol.md
+│   ├── pairing-and-discovery.md
+│   ├── permissions.md
+│   ├── protocol-fixtures.md
+│   ├── releasing.md
+│   ├── screenshots/
+│   │   └── README.md
+│   ├── test-matrix.md
+│   ├── testing.md
+│   ├── third-party-dependencies.md
+│   ├── troubleshooting.md
+│   └── watch-sync.md
 ├── fdroid/
+│   └── metadata/
+│       └── com.example.miles.wear.yml
 ├── gradle/
+│   ├── libs.versions.toml
+│   └── wrapper/
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
 ├── gradle.properties
 ├── gradlew
 ├── gradlew.bat
+├── LICENSE
 ├── metadata.json
-└── settings.gradle.kts
+├── PRIVACY.md
+├── README.md
+├── SECURITY.md
+├── settings.gradle.kts
+├── SUPPORT.md
+└── THIRD_PARTY_NOTICES.md
 ```
 
 ---
